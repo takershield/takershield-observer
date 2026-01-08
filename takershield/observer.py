@@ -216,9 +216,10 @@ def build_market_table() -> Table:
         # Risk bar visualization - only show if ML enabled
         if ml_enabled:
             filled = int(risk_score * 10)
-            if risk_score >= 0.55:
+            # Week-1 thresholds: NO_QUOTE >= 0.65, WIDEN 0.50-0.65
+            if risk_score >= 0.65:
                 bar_color = "red"
-            elif risk_score >= 0.35:
+            elif risk_score >= 0.50:
                 bar_color = "yellow"
             else:
                 bar_color = "green"
