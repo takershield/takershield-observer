@@ -77,17 +77,19 @@ class ObserverState:
         # Status message
         self.status_msg = ""
         self.status_time: Optional[float] = None
+        self.status_duration = 5
         
         # Input mode - pause display
         self.input_mode = False
         self.live = None  # Live display reference
     
-    def set_status(self, msg: str):
+    def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
         self.status_time = time.time()
+        self.status_duration = duration
     
     def get_status(self) -> str:
-        if self.status_time and time.time() - self.status_time < 5:
+        if self.status_time and time.time() - self.status_time < self.status_duration:
             return self.status_msg
         return ""
     
@@ -346,6 +348,9 @@ async def connect_and_listen(url: str, token: str):
                     elif msg_type == "tickers_list":
                         watched = data.get('watched', [])
                         state.set_status(f"📋 Watching: {', '.join(watched) if watched else 'none'}")
+                    
+                    elif msg_type == "error":
+                        state.set_status(f"❌ {data.get('message', 'Unknown error')}", duration=10)
                         
         except websockets.exceptions.ConnectionClosed:
             state.connected = False
