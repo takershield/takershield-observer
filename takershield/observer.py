@@ -697,10 +697,17 @@ async def handle_keyboard():
                         console.print("\n[bold]Currently watching:[/bold]")
                         for i, ticker in enumerate(watched, 1):
                             console.print(f"  {i}. {ticker}")
-                        choice = Prompt.ask("Enter number or ticker name to remove (or press Enter to cancel)")
+                        console.print(f"  [cyan]0. Remove ALL[/cyan]")
+                        choice = Prompt.ask("Enter number (0=all)")
                         
                         ticker = None
-                        if choice.isdigit():
+                        if choice == "0":
+                            # Remove all
+                            for t in watched:
+                                await send_command("remove_ticker", t)
+                            state.markets.clear()
+                            console.print(f"[green]Removed {len(watched)} markets[/green]")
+                        elif choice.isdigit():
                             idx = int(choice) - 1
                             if 0 <= idx < len(watched):
                                 ticker = watched[idx]
