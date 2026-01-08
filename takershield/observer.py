@@ -183,7 +183,7 @@ def build_market_table() -> Table:
     table.add_column("Mid", justify="right", width=7)
     table.add_column("Spread", justify="right", width=6)
     table.add_column("Risk (0-1)", justify="center", width=12)
-    table.add_column("Signal", justify="center", width=14)
+    table.add_column("Signal", justify="center", width=16)
     table.add_column("Settles", justify="right", width=10)
     table.add_column("p99", justify="right", width=5)
     
