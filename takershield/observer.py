@@ -77,6 +77,9 @@ class ObserverState:
         # Status message
         self.status_msg = ""
         self.status_time: Optional[float] = None
+        
+        # Input mode - pause display
+        self.input_mode = False
     
     def set_status(self, msg: str):
         self.status_msg = msg
@@ -376,7 +379,8 @@ async def run_display():
     """Run the live display."""
     with Live(build_layout(), refresh_per_second=4, console=console) as live:
         while True:
-            live.update(build_layout())
+            if not state.input_mode:
+                live.update(build_layout())
             await asyncio.sleep(0.25)
 
 
@@ -404,20 +408,24 @@ async def handle_keyboard():
                     await send_command("list_tickers")
                 
                 elif char == 'a':
-                    # Restore terminal for input
+                    # Pause display and restore terminal for input
+                    state.input_mode = True
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                     console.print("\n")
                     ticker = Prompt.ask("Enter ticker to add")
                     tty.setcbreak(sys.stdin.fileno())
+                    state.input_mode = False
                     if ticker:
                         await send_command("add_ticker", ticker.upper())
                 
                 elif char == 'r':
-                    # Restore terminal for input
+                    # Pause display and restore terminal for input
+                    state.input_mode = True
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
                     console.print("\n")
                     ticker = Prompt.ask("Enter ticker to remove")
                     tty.setcbreak(sys.stdin.fileno())
+                    state.input_mode = False
                     if ticker:
                         await send_command("remove_ticker", ticker.upper())
             
