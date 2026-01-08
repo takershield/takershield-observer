@@ -176,7 +176,7 @@ def build_market_table() -> Table:
     table.add_column("Spread", justify="right", width=6)
     table.add_column("Risk", justify="right", width=7)
     table.add_column("Regime", justify="center", width=10)
-    table.add_column("TTC", justify="right", width=12)
+    table.add_column("Settles", justify="right", width=12)
     table.add_column("p99", justify="right", width=6)
     
     for ticker, data in state.markets.items():
