@@ -80,6 +80,7 @@ class ObserverState:
         
         # Input mode - pause display
         self.input_mode = False
+        self.live = None  # Live display reference
     
     def set_status(self, msg: str):
         self.status_msg = msg
@@ -378,6 +379,7 @@ async def send_command(cmd_type: str, ticker: str = None):
 async def run_display():
     """Run the live display."""
     with Live(build_layout(), refresh_per_second=4, console=console) as live:
+        state.live = live
         while True:
             if not state.input_mode:
                 live.update(build_layout())
@@ -408,23 +410,29 @@ async def handle_keyboard():
                     await send_command("list_tickers")
                 
                 elif char == 'a':
-                    # Pause display and restore terminal for input
+                    # Stop display and restore terminal for input
                     state.input_mode = True
+                    if state.live:
+                        state.live.stop()
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                    console.print("\n")
                     ticker = Prompt.ask("Enter ticker to add")
                     tty.setcbreak(sys.stdin.fileno())
+                    if state.live:
+                        state.live.start()
                     state.input_mode = False
                     if ticker:
                         await send_command("add_ticker", ticker.upper())
                 
                 elif char == 'r':
-                    # Pause display and restore terminal for input
+                    # Stop display and restore terminal for input
                     state.input_mode = True
+                    if state.live:
+                        state.live.stop()
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                    console.print("\n")
                     ticker = Prompt.ask("Enter ticker to remove")
                     tty.setcbreak(sys.stdin.fileno())
+                    if state.live:
+                        state.live.start()
                     state.input_mode = False
                     if ticker:
                         await send_command("remove_ticker", ticker.upper())
