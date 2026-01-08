@@ -90,10 +90,12 @@ class ObserverState:
         # Search results
         self.search_results: list = []
         
-        # Savings tracking
+        # Config (set from CLI args)
         self.position_size = 100  # Contracts per trade (default)
-        self.total_savings_cents = 0.0
-        self.pending_triggers: Dict[str, dict] = {}  # ticker -> {mid_at_trigger, timestamp}
+        self.quote_side = "unknown"  # yes, no, both, unknown
+        
+        # Event tracking (from server)
+        self.active_events: Dict[str, dict] = {}  # event_id -> EventRecord
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -207,27 +209,84 @@ def build_market_table() -> Table:
 
 
 def build_events_table() -> Table:
-    """Build would-cancel events table."""
+    """Build would-cancel events table with savings tracking."""
     table = Table(
-        title="🚨 Would-Cancel Events",
+        title="🚨 Risk Events",
         box=box.ROUNDED,
         show_header=True,
         header_style="bold red"
     )
     
-    table.add_column("Ticker", width=28)
-    table.add_column("Triggers", width=20)
+    table.add_column("Ticker", width=24)
+    table.add_column("Adverse (30s/2m/5m)", width=18)
+    table.add_column("Fill?", width=8)
+    table.add_column("Saved", width=12)
     
-    for event in reversed(state.would_cancel_events[-10:]):
-        triggers = ", ".join(event.get("trigger_reasons", []))
+    # Show active events from server
+    for event_id, event in list(state.active_events.items())[-10:]:
+        ticker = event.get("ticker", "?")[-24:]
         
-        table.add_row(
-            event.get("ticker", "?")[-28:],
-            triggers
-        )
+        # Get adverse moves based on configured side
+        side = state.quote_side
+        if side == "yes":
+            adv_30s = event.get("adverse_yes_30s", 0)
+            adv_2m = event.get("adverse_yes_2m", 0)
+            adv_5m = event.get("adverse_yes_5m", 0)
+            would_fill = event.get("would_fill_yes", False)
+        elif side == "no":
+            adv_30s = event.get("adverse_no_30s", 0)
+            adv_2m = event.get("adverse_no_2m", 0)
+            adv_5m = event.get("adverse_no_5m", 0)
+            would_fill = event.get("would_fill_no", False)
+        elif side == "both":
+            # Show range - use max
+            adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
+            adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
+            adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
+            would_fill = event.get("would_fill_yes", False) or event.get("would_fill_no", False)
+        else:  # unknown
+            # Show both sides' max
+            adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
+            adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
+            adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
+            would_fill = None  # Unknown
+        
+        # Format adverse moves
+        adverse_str = f"{adv_30s:.0f}¢/{adv_2m:.0f}¢/{adv_5m:.0f}¢"
+        
+        # Format would-fill
+        if would_fill is None:
+            fill_str = "[dim]?[/dim]"
+        elif would_fill:
+            fill_str = "[green]YES[/green]"
+        else:
+            fill_str = "[dim]no[/dim]"
+        
+        # Calculate saved (only if would_fill and side known)
+        if would_fill and side in ("yes", "no", "both"):
+            saved_cents = adv_5m
+            saved_dollars = (saved_cents / 100) * state.position_size
+            saved_str = f"[green]${saved_dollars:.2f}[/green]"
+        elif would_fill is False:
+            saved_str = "[dim]avoided[/dim]"
+        else:
+            # Unknown side - show cents only
+            saved_str = f"{adv_5m:.0f}¢ risk"
+        
+        table.add_row(ticker, adverse_str, fill_str, saved_str)
     
-    if not state.would_cancel_events:
-        table.add_row("No events yet", "-")
+    if not state.active_events:
+        # Fall back to legacy events
+        for event in reversed(state.would_cancel_events[-5:]):
+            triggers = ", ".join(event.get("trigger_reasons", []))
+            table.add_row(
+                event.get("ticker", "?")[-24:],
+                triggers[:18],
+                "-",
+                "-"
+            )
+        if not state.would_cancel_events:
+            table.add_row("No events yet", "-", "-", "-")
     
     return table
 
@@ -237,24 +296,56 @@ def build_stats_panel() -> Panel:
     uptime = time.time() - state.connect_time if state.connect_time else 0
     
     heartbeat_ago = ""
+    data_stale = False
     if state.last_heartbeat:
         ago = time.time() - state.last_heartbeat
         heartbeat_ago = f"{ago:.1f}s ago"
+        if ago > 15:
+            data_stale = True
     
-    # Calculate savings in dollars
-    savings_dollars = state.total_savings_cents / 100
+    # Calculate total savings from completed events with would_fill
+    total_saved = 0.0
+    fill_count = 0
+    for event in state.active_events.values():
+        if event.get("tracking_complete"):
+            side = state.quote_side
+            if side == "yes" and event.get("would_fill_yes"):
+                total_saved += (event.get("adverse_yes_5m", 0) / 100) * state.position_size
+                fill_count += 1
+            elif side == "no" and event.get("would_fill_no"):
+                total_saved += (event.get("adverse_no_5m", 0) / 100) * state.position_size
+                fill_count += 1
+            elif side == "both":
+                if event.get("would_fill_yes"):
+                    total_saved += (event.get("adverse_yes_5m", 0) / 100) * state.position_size
+                    fill_count += 1
+                if event.get("would_fill_no"):
+                    total_saved += (event.get("adverse_no_5m", 0) / 100) * state.position_size
+                    fill_count += 1
     
     content = Text()
+    
+    # Shadow mode label
+    content.append("⚠️  SHADOW MODE\n", style="yellow bold")
+    
+    # Data stale warning
+    if data_stale:
+        content.append("⚠️  DATA STALE\n", style="red bold")
+    
     content.append("🔗 ", style="bold")
     content.append("Connected" if state.connected else "Disconnected", 
                    style="green" if state.connected else "red")
     content.append(f"\n⏱️  Uptime: {format_time(uptime)}")
     content.append(f"\n📨 Updates: {state.updates_received}")
     content.append(f"\n💓 Heartbeat: {heartbeat_ago}")
-    content.append(f"\n💰 Est. Saved: ")
-    content.append(f"${savings_dollars:.2f}", style="green bold" if savings_dollars > 0 else "dim")
     
-    return Panel(content, title="Connection", border_style="blue")
+    # Show savings only if side is known
+    if state.quote_side != "unknown" and fill_count > 0:
+        content.append(f"\n💰 Saved: ")
+        content.append(f"${total_saved:.2f}", style="green bold")
+        content.append(f" ({fill_count} fills)", style="dim")
+    
+    return Panel(content, title="Status", border_style="blue")
 
 
 def build_latency_panel() -> Panel:
@@ -300,7 +391,7 @@ def build_layout() -> Layout:
     
     # Header
     header = Panel(
-        Text("🛡️  TakerShield Observer", justify="center", style="bold white"),
+        Text("🛡️  TakerShield Observer [SHADOW MODE]", justify="center", style="bold white"),
         border_style="cyan"
     )
     layout["header"].update(header)
@@ -357,35 +448,17 @@ async def connect_and_listen(url: str, token: str):
                         if ttc < 0:
                             ticker = payload.get("ticker")
                             state.markets.pop(ticker, None)
-                            state.pending_triggers.pop(ticker, None)
                         else:
                             state.update_market(payload)
-                            
-                            # Check for savings on pending triggers
-                            ticker = payload.get("ticker")
-                            mid = payload.get("mid", 0)
-                            if ticker in state.pending_triggers and mid:
-                                trigger_info = state.pending_triggers[ticker]
-                                trigger_mid = trigger_info.get("mid", 0)
-                                # If price moved against us (either direction counts)
-                                move = abs(mid - trigger_mid)
-                                if move > 1:  # More than 1 cent move
-                                    savings = move * state.position_size / 100  # Convert to dollars
-                                    state.total_savings_cents += move * state.position_size
-                                    # Clear this trigger after 30s
-                                    if time.time() - trigger_info.get("timestamp", 0) > 30:
-                                        state.pending_triggers.pop(ticker, None)
                     
                     elif msg_type == "would_cancel":
                         state.add_would_cancel(payload)
-                        # Track for savings calculation
-                        ticker = payload.get("ticker")
-                        mid = payload.get("mid_at_trigger", 0)
-                        if ticker and mid:
-                            state.pending_triggers[ticker] = {
-                                "mid": mid,
-                                "timestamp": time.time()
-                            }
+                    
+                    elif msg_type == "event_update":
+                        # Update event tracking from server
+                        event_id = payload.get("event_id")
+                        if event_id:
+                            state.active_events[event_id] = payload
                     
                     elif msg_type == "heartbeat":
                         state.update_heartbeat(payload)
@@ -673,12 +746,28 @@ def parse_args():
         required=True,
         help="Authentication token (required)"
     )
+    parser.add_argument(
+        "--size", "-s",
+        type=int,
+        default=100,
+        help="Position size in contracts (default: 100)"
+    )
+    parser.add_argument(
+        "--side",
+        choices=["yes", "no", "both", "unknown"],
+        default="unknown",
+        help="Quote side: yes, no, both, or unknown (default: unknown)"
+    )
     return parser.parse_args()
 
 
 def main():
     """Entry point for console script."""
     args = parse_args()
+    
+    # Store config in state
+    state.position_size = args.size
+    state.quote_side = args.side
     
     try:
         asyncio.run(run_observer(args.url, args.token))
