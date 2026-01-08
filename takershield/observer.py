@@ -167,6 +167,29 @@ def format_time(seconds: float) -> str:
     return f"{mins}:{secs:02d}"
 
 
+def format_time_with_type(seconds: float, time_type: str) -> str:
+    """Format time with indicator for type (ends vs closes)."""
+    if seconds < 0:
+        return "[red]EXPIRED[/red]"
+    if time_type == "closes":
+        # Settlement deadline - show with ~ prefix to indicate it's not event end
+        if seconds > 86400 * 7:
+            days = int(seconds // 86400)
+            return f"[dim]~{days}d[/dim]"
+        if seconds > 86400:
+            days = int(seconds // 86400)
+            return f"[dim]~{days}d[/dim]"
+        if seconds > 3600:
+            hours = int(seconds // 3600)
+            mins = int((seconds % 3600) // 60)
+            return f"[dim]~{hours}h {mins}m[/dim]"
+        mins = int(seconds // 60)
+        return f"[dim]~{mins}m[/dim]"
+    else:
+        # Expected event end - show normally
+        return format_time(seconds)
+
+
 def build_market_table() -> Table:
     """Build market status table."""
     table = Table(
@@ -184,7 +207,7 @@ def build_market_table() -> Table:
     table.add_column("Spread", justify="right", width=6)
     table.add_column("Risk (0-1)", justify="center", width=12)
     table.add_column("Signal", justify="center", width=16)
-    table.add_column("Settles", justify="right", width=10)
+    table.add_column("Ends", justify="right", width=10)
     table.add_column("p99", justify="right", width=5)
     
     for ticker, data in state.markets.items():
@@ -215,7 +238,7 @@ def build_market_table() -> Table:
             elif reason == "spread_blowout":
                 signal_str = "[red]NO_QUOTE[/red] [dim](sprd)[/dim]"
             elif reason == "high_volatility":
-                signal_str = "[red]NO_QUOTE[/red] [dim](vol)[/dim]"
+                signal_str = "[red]NO_QUOTE[/red] [dim](p99)[/dim]"
             elif reason == "ml_risk":
                 signal_str = "[red]NO_QUOTE[/red] [dim](ml)[/dim]"
             else:
@@ -231,7 +254,7 @@ def build_market_table() -> Table:
             str(data.get("spread", "-")),
             risk_bar,
             signal_str,
-            format_time(data.get("time_to_close_s", 0)),
+            format_time_with_type(data.get("time_to_close_s", 0), data.get("time_type", "closes")),
             f"{data.get('p99_move', 0):.1f}",
         )
     
