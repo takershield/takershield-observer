@@ -85,6 +85,7 @@ class ObserverState:
         
         # Available markets from browse
         self.available_markets: list = []
+        self.available_markets_info: Optional[list] = None
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -354,7 +355,13 @@ async def connect_and_listen(url: str, token: str):
                     
                     elif msg_type == "available_list":
                         markets = data.get('markets', [])
-                        state.available_markets = markets
+                        # Handle both old format (list of strings) and new format (list of dicts)
+                        if markets and isinstance(markets[0], dict):
+                            state.available_markets = [m['ticker'] for m in markets]
+                            state.available_markets_info = markets
+                        else:
+                            state.available_markets = markets
+                            state.available_markets_info = None
                         if markets:
                             state.set_status(f"📋 Found {len(markets)} markets - check terminal", duration=10)
                         else:
@@ -445,13 +452,33 @@ async def handle_keyboard():
                     if state.live:
                         state.live.stop()
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                    ticker = Prompt.ask("Enter ticker to remove")
+                    
+                    # Show current watched tickers
+                    watched = list(state.markets.keys())
+                    if watched:
+                        console.print("\n[bold]Currently watching:[/bold]")
+                        for i, ticker in enumerate(watched, 1):
+                            console.print(f"  {i}. {ticker}")
+                        choice = Prompt.ask("Enter number or ticker name to remove (or press Enter to cancel)")
+                        
+                        ticker = None
+                        if choice.isdigit():
+                            idx = int(choice) - 1
+                            if 0 <= idx < len(watched):
+                                ticker = watched[idx]
+                        elif choice:
+                            ticker = choice.upper()
+                    else:
+                        console.print("\n[yellow]No tickers being watched[/yellow]")
+                        await asyncio.sleep(1)
+                        ticker = None
+                    
                     tty.setcbreak(sys.stdin.fileno())
                     if state.live:
                         state.live.start()
                     state.input_mode = False
                     if ticker:
-                        await send_command("remove_ticker", ticker.upper())
+                        await send_command("remove_ticker", ticker)
                 
                 elif char == 'b':
                     # Browse available markets
@@ -465,7 +492,10 @@ async def handle_keyboard():
                     console.print("  KXBTCD      - BTC Daily")
                     console.print("  KXETH15M    - ETH 15-minute")
                     console.print("  KXETHD      - ETH Daily")
-                    console.print("  Or enter any series ticker")
+                    console.print("  KXWTAMATCH  - WTA Tennis")
+                    console.print("  KXATPMATCH  - ATP Tennis")
+                    console.print("  KXNBAMATCH  - NBA Games")
+                    console.print("  Or enter any series ticker from URL")
                     
                     series = Prompt.ask("Enter series", default="KXBTC15M")
                     
@@ -475,9 +505,18 @@ async def handle_keyboard():
                     await asyncio.sleep(1)  # Wait for response
                     
                     if state.available_markets:
-                        console.print(f"\n[bold]Available {series.upper()} Markets:[/bold]")
-                        for i, ticker in enumerate(state.available_markets, 1):
-                            console.print(f"  {i}. {ticker}")
+                        console.print(f"\n[bold]Available {series.upper()} Markets (soonest first):[/bold]")
+                        if state.available_markets_info:
+                            for i, info in enumerate(state.available_markets_info, 1):
+                                ttc = info.get('ttc_mins', 0)
+                                if ttc < 60:
+                                    ttc_str = f"{ttc}m"
+                                else:
+                                    ttc_str = f"{ttc // 60}h {ttc % 60}m"
+                                console.print(f"  {i}. {info['ticker']}  [dim]({ttc_str})[/dim]")
+                        else:
+                            for i, ticker in enumerate(state.available_markets, 1):
+                                console.print(f"  {i}. {ticker}")
                         choice = Prompt.ask("Enter number to add (or press Enter to cancel)")
                         if choice.isdigit():
                             idx = int(choice) - 1
