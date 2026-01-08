@@ -89,6 +89,11 @@ class ObserverState:
         
         # Search results
         self.search_results: list = []
+        
+        # Savings tracking
+        self.position_size = 100  # Contracts per trade (default)
+        self.total_savings_cents = 0.0
+        self.pending_triggers: Dict[str, dict] = {}  # ticker -> {mid_at_trigger, timestamp}
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -236,6 +241,9 @@ def build_stats_panel() -> Panel:
         ago = time.time() - state.last_heartbeat
         heartbeat_ago = f"{ago:.1f}s ago"
     
+    # Calculate savings in dollars
+    savings_dollars = state.total_savings_cents / 100
+    
     content = Text()
     content.append("🔗 ", style="bold")
     content.append("Connected" if state.connected else "Disconnected", 
@@ -243,6 +251,8 @@ def build_stats_panel() -> Panel:
     content.append(f"\n⏱️  Uptime: {format_time(uptime)}")
     content.append(f"\n📨 Updates: {state.updates_received}")
     content.append(f"\n💓 Heartbeat: {heartbeat_ago}")
+    content.append(f"\n💰 Est. Saved: ")
+    content.append(f"${savings_dollars:.2f}", style="green bold" if savings_dollars > 0 else "dim")
     
     return Panel(content, title="Connection", border_style="blue")
 
@@ -347,11 +357,35 @@ async def connect_and_listen(url: str, token: str):
                         if ttc < 0:
                             ticker = payload.get("ticker")
                             state.markets.pop(ticker, None)
+                            state.pending_triggers.pop(ticker, None)
                         else:
                             state.update_market(payload)
+                            
+                            # Check for savings on pending triggers
+                            ticker = payload.get("ticker")
+                            mid = payload.get("mid", 0)
+                            if ticker in state.pending_triggers and mid:
+                                trigger_info = state.pending_triggers[ticker]
+                                trigger_mid = trigger_info.get("mid", 0)
+                                # If price moved against us (either direction counts)
+                                move = abs(mid - trigger_mid)
+                                if move > 1:  # More than 1 cent move
+                                    savings = move * state.position_size / 100  # Convert to dollars
+                                    state.total_savings_cents += move * state.position_size
+                                    # Clear this trigger after 30s
+                                    if time.time() - trigger_info.get("timestamp", 0) > 30:
+                                        state.pending_triggers.pop(ticker, None)
                     
                     elif msg_type == "would_cancel":
                         state.add_would_cancel(payload)
+                        # Track for savings calculation
+                        ticker = payload.get("ticker")
+                        mid = payload.get("mid_at_trigger", 0)
+                        if ticker and mid:
+                            state.pending_triggers[ticker] = {
+                                "mid": mid,
+                                "timestamp": time.time()
+                            }
                     
                     elif msg_type == "heartbeat":
                         state.update_heartbeat(payload)
