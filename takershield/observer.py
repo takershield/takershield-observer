@@ -175,7 +175,7 @@ def build_market_table() -> Table:
     table.add_column("Mid", justify="right", width=7)
     table.add_column("Spread", justify="right", width=6)
     table.add_column("Risk", justify="right", width=7)
-    table.add_column("Regime", justify="center", width=10)
+    table.add_column("Signal", justify="center", width=10)
     table.add_column("Settles", justify="right", width=12)
     table.add_column("p99", justify="right", width=6)
     
@@ -254,14 +254,15 @@ def build_latency_panel() -> Panel:
     # Color code latencies
     poll_style = "green" if state.last_poll_latency < 100 else "yellow" if state.last_poll_latency < 200 else "red"
     compute_style = "green" if state.last_compute_latency < 10 else "yellow" if state.last_compute_latency < 50 else "red"
-    ws_style = "green" if state.last_ws_latency < 50 else "yellow" if state.last_ws_latency < 100 else "red"
+    ws_latency = abs(state.last_ws_latency)  # Absolute value due to clock skew
+    ws_style = "green" if ws_latency < 50 else "yellow" if ws_latency < 100 else "red"
     
     content.append("📡 Poll: ", style="dim")
     content.append(f"{state.last_poll_latency:.0f}ms\n", style=poll_style)
     content.append("🧠 Compute: ", style="dim")
     content.append(f"{state.last_compute_latency:.1f}ms\n", style=compute_style)
     content.append("🌐 WS: ", style="dim")
-    content.append(f"{state.last_ws_latency:.0f}ms", style=ws_style)
+    content.append(f"{ws_latency:.0f}ms", style=ws_style)
     
     return Panel(content, title="Latency", border_style="magenta")
 
