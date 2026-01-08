@@ -62,7 +62,17 @@ Options:
 - `time_to_event` - Less than 5 min to market close
 - `spread_blowout` - Spread ≥ 8¢
 - `high_volatility` - p99 move ≥ 6¢
-- `ml_risk` - ML model score ≥ 0.55
+- `ml_risk` - ML model score ≥ 0.55 (crypto only)
+
+## ML Coverage
+
+**ML risk scoring is crypto-specialist in v1:**
+- ✅ Enabled for: KXBTC*, KXETH* (Bitcoin & Ethereum markets)
+- ❌ Disabled for: Sports, politics, other markets
+
+For non-crypto markets, baseline triggers are still active (spread, volatility, time). These rules are market-agnostic and provide protection without ML.
+
+Risk column shows `-- N/A --` when ML is not applicable to that market.
 
 ## Savings Calculation
 

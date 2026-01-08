@@ -190,16 +190,20 @@ def build_market_table() -> Table:
     for ticker, data in state.markets.items():
         regime = data.get("regime", "?")
         risk_score = data.get("risk_score", 0)
+        ml_enabled = data.get("ml_enabled", False)
         
-        # Risk bar visualization
-        filled = int(risk_score * 10)
-        if risk_score >= 0.55:
-            bar_color = "red"
-        elif risk_score >= 0.35:
-            bar_color = "yellow"
+        # Risk bar visualization - only show if ML enabled
+        if ml_enabled:
+            filled = int(risk_score * 10)
+            if risk_score >= 0.55:
+                bar_color = "red"
+            elif risk_score >= 0.35:
+                bar_color = "yellow"
+            else:
+                bar_color = "green"
+            risk_bar = f"[{bar_color}]" + "█" * filled + f"[/{bar_color}][dim]" + "░" * (10 - filled) + "[/dim]"
         else:
-            bar_color = "green"
-        risk_bar = f"[{bar_color}]" + "█" * filled + f"[/{bar_color}][dim]" + "░" * (10 - filled) + "[/dim]"
+            risk_bar = "[dim]-- N/A --[/dim]"
         
         table.add_row(
             ticker[-28:],  # Truncate ticker
