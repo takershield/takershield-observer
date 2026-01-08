@@ -173,7 +173,8 @@ def build_market_table() -> Table:
         title="📊 Market Status",
         box=box.ROUNDED,
         show_header=True,
-        header_style="bold cyan"
+        header_style="bold cyan",
+        expand=True
     )
     
     table.add_column("Ticker", style="dim", width=28)
@@ -191,7 +192,7 @@ def build_market_table() -> Table:
         risk_score = data.get("risk_score", 0)
         
         table.add_row(
-            ticker[-20:],  # Truncate ticker
+            ticker[-28:],  # Truncate ticker
             str(data.get("bid", "-")),
             str(data.get("ask", "-")),
             f"{data.get('mid', 0):.1f}" if data.get("mid") else "-",
@@ -214,17 +215,20 @@ def build_events_table() -> Table:
         title="🚨 Risk Events",
         box=box.ROUNDED,
         show_header=True,
-        header_style="bold red"
+        header_style="bold red",
+        expand=True
     )
     
-    table.add_column("Ticker", width=24)
+    table.add_column("Ticker", width=28)
+    table.add_column("Triggers", width=20)
     table.add_column("Adverse (30s/2m/5m)", width=18)
-    table.add_column("Fill?", width=8)
-    table.add_column("Saved", width=12)
+    table.add_column("Fill?", justify="center", width=8)
+    table.add_column("Saved", justify="right", width=14)
     
     # Show active events from server
     for event_id, event in list(state.active_events.items())[-10:]:
-        ticker = event.get("ticker", "?")[-24:]
+        ticker = event.get("ticker", "?")[-28:]
+        triggers = ", ".join(event.get("trigger_reasons", []))[:20]
         
         # Get adverse moves based on configured side
         side = state.quote_side
@@ -273,20 +277,21 @@ def build_events_table() -> Table:
             # Unknown side - show cents only
             saved_str = f"{adv_5m:.0f}¢ risk"
         
-        table.add_row(ticker, adverse_str, fill_str, saved_str)
+        table.add_row(ticker, triggers, adverse_str, fill_str, saved_str)
     
     if not state.active_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
             triggers = ", ".join(event.get("trigger_reasons", []))
             table.add_row(
-                event.get("ticker", "?")[-24:],
-                triggers[:18],
+                event.get("ticker", "?")[-28:],
+                triggers[:20],
+                "-",
                 "-",
                 "-"
             )
         if not state.would_cancel_events:
-            table.add_row("No events yet", "-", "-", "-")
+            table.add_row("No events yet", "-", "-", "-", "-")
     
     return table
 
@@ -379,14 +384,18 @@ def build_layout() -> Layout:
     )
     
     layout["main"].split_row(
-        Layout(name="markets", ratio=3),
+        Layout(name="left", ratio=3),
         Layout(name="sidebar", ratio=1)
     )
     
+    layout["left"].split_column(
+        Layout(name="markets", ratio=2),
+        Layout(name="events", ratio=1)
+    )
+    
     layout["sidebar"].split_column(
-        Layout(name="stats", size=8),
+        Layout(name="stats", size=9),
         Layout(name="latency", size=7),
-        Layout(name="events")
     )
     
     # Header
@@ -396,13 +405,13 @@ def build_layout() -> Layout:
     )
     layout["header"].update(header)
     
-    # Markets table
+    # Left side - markets and events
     layout["markets"].update(build_market_table())
+    layout["events"].update(build_events_table())
     
     # Sidebar
     layout["stats"].update(build_stats_panel())
     layout["latency"].update(build_latency_panel())
-    layout["events"].update(build_events_table())
     
     # Footer
     footer_text = "[a]dd  [r]emove  [b]rowse  [d]emo  [l]ist  [c]lear  [q]uit"
