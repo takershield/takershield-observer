@@ -236,8 +236,7 @@ def build_events_table() -> Table:
     table.add_column("Ticker", width=28)
     table.add_column("Trigger", width=16)
     table.add_column("Action", justify="center", width=10)
-    table.add_column("Risk", justify="center", width=12)
-    table.add_column("Move (5m)", justify="right", width=10)
+    table.add_column("Move (30s/2m/5m)", justify="right", width=18)
     
     # Show active events from server
     for event_id, event in list(state.active_events.items())[-10:]:
@@ -245,40 +244,40 @@ def build_events_table() -> Table:
         triggers = ", ".join(event.get("trigger_reasons", []))[:16]
         
         # Get adverse moves (use max of both sides since we don't know direction)
+        adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
+        adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
         adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
-        risk_score = event.get("risk_score", 0)
-        
-        # Risk bar visualization (0-1 scale, 10 blocks)
-        filled = int(risk_score * 10)
-        risk_bar = "[red]" + "█" * filled + "[/red][dim]" + "░" * (10 - filled) + "[/dim]"
         
         # Action - always CANCEL in shadow mode
         action_str = "[red bold]CANCEL[/red bold]"
         
-        # Move display
-        if adv_5m > 0:
-            move_str = f"[yellow]{adv_5m:.0f}¢[/yellow]"
-        else:
-            move_str = "[dim]0¢[/dim]"
+        # Move display - color code by severity
+        def color_move(m):
+            if m >= 10:
+                return f"[red]{m:.0f}¢[/red]"
+            elif m >= 5:
+                return f"[yellow]{m:.0f}¢[/yellow]"
+            elif m > 0:
+                return f"[green]{m:.0f}¢[/green]"
+            else:
+                return "[dim]0¢[/dim]"
         
-        table.add_row(ticker, triggers, action_str, risk_bar, move_str)
+        move_str = f"{color_move(adv_30s)}/{color_move(adv_2m)}/{color_move(adv_5m)}"
+        
+        table.add_row(ticker, triggers, action_str, move_str)
     
     if not state.active_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
             triggers = ", ".join(event.get("trigger_reasons", []))
-            risk = event.get("risk_score", 0)
-            filled = int(risk * 10)
-            risk_bar = "[red]" + "█" * filled + "[/red][dim]" + "░" * (10 - filled) + "[/dim]"
             table.add_row(
                 event.get("ticker", "?")[-28:],
                 triggers[:16],
                 "[red bold]CANCEL[/red bold]",
-                risk_bar,
                 "-"
             )
         if not state.would_cancel_events:
-            table.add_row("No events yet", "-", "-", "-", "-")
+            table.add_row("No events yet", "-", "-", "-")
     
     return table
 
