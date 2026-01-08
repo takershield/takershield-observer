@@ -35,4 +35,4 @@ takershield --url wss://api.takershield.com/ws --token YOUR_TOKEN
 
 ## License
 
-Proprietary - TakerShield AI
+MIT License - see LICENSE
