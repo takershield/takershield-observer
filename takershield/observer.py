@@ -82,6 +82,9 @@ class ObserverState:
         # Input mode - pause display
         self.input_mode = False
         self.live = None  # Live display reference
+        
+        # Available markets from browse
+        self.available_markets: list = []
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -292,7 +295,7 @@ def build_layout() -> Layout:
     layout["events"].update(build_events_table())
     
     # Footer
-    footer_text = "[a]dd ticker  [r]emove ticker  [l]ist  [q]uit"
+    footer_text = "[a]dd ticker  [r]emove ticker  [b]rowse  [l]ist  [q]uit"
     status = state.get_status()
     if status:
         footer_text = f"{status}  |  {footer_text}"
@@ -348,6 +351,14 @@ async def connect_and_listen(url: str, token: str):
                     elif msg_type == "tickers_list":
                         watched = data.get('watched', [])
                         state.set_status(f"📋 Watching: {', '.join(watched) if watched else 'none'}")
+                    
+                    elif msg_type == "available_list":
+                        markets = data.get('markets', [])
+                        state.available_markets = markets
+                        if markets:
+                            state.set_status(f"📋 Found {len(markets)} markets - check terminal", duration=10)
+                        else:
+                            state.set_status("❌ No markets found")
                     
                     elif msg_type == "error":
                         state.set_status(f"❌ {data.get('message', 'Unknown error')}", duration=10)
@@ -441,6 +452,45 @@ async def handle_keyboard():
                     state.input_mode = False
                     if ticker:
                         await send_command("remove_ticker", ticker.upper())
+                
+                elif char == 'b':
+                    # Browse available markets
+                    state.input_mode = True
+                    if state.live:
+                        state.live.stop()
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                    
+                    console.print("\n[bold]Popular series:[/bold]")
+                    console.print("  KXBTC15M    - BTC 15-minute")
+                    console.print("  KXBTCD      - BTC Daily")
+                    console.print("  KXETH15M    - ETH 15-minute")
+                    console.print("  KXETHD      - ETH Daily")
+                    console.print("  Or enter any series ticker")
+                    
+                    series = Prompt.ask("Enter series", default="KXBTC15M")
+                    
+                    # Request available markets
+                    if state.ws:
+                        await state.ws.send(json.dumps({"type": "list_available", "series": series.upper()}))
+                    await asyncio.sleep(1)  # Wait for response
+                    
+                    if state.available_markets:
+                        console.print(f"\n[bold]Available {series.upper()} Markets:[/bold]")
+                        for i, ticker in enumerate(state.available_markets, 1):
+                            console.print(f"  {i}. {ticker}")
+                        choice = Prompt.ask("Enter number to add (or press Enter to cancel)")
+                        if choice.isdigit():
+                            idx = int(choice) - 1
+                            if 0 <= idx < len(state.available_markets):
+                                await send_command("add_ticker", state.available_markets[idx])
+                    else:
+                        console.print(f"\n[yellow]No open markets found for {series}[/yellow]")
+                        await asyncio.sleep(1)
+                    
+                    tty.setcbreak(sys.stdin.fileno())
+                    if state.live:
+                        state.live.start()
+                    state.input_mode = False
             
             await asyncio.sleep(0.1)
     
