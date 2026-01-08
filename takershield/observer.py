@@ -19,6 +19,7 @@ import asyncio
 import json
 import sys
 import time
+import select
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -31,6 +32,7 @@ try:
     from rich.panel import Panel
     from rich.layout import Layout
     from rich.text import Text
+    from rich.prompt import Prompt
     from rich import box
 except ImportError:
     print("Install dependencies: pip install websockets rich")
@@ -68,6 +70,22 @@ class ObserverState:
         self.last_poll_latency = 0.0
         self.last_compute_latency = 0.0
         self.last_ws_latency = 0.0
+        
+        # Websocket reference for commands
+        self.ws: Optional[Any] = None
+        
+        # Status message
+        self.status_msg = ""
+        self.status_time: Optional[float] = None
+    
+    def set_status(self, msg: str):
+        self.status_msg = msg
+        self.status_time = time.time()
+    
+    def get_status(self) -> str:
+        if self.status_time and time.time() - self.status_time < 5:
+            return self.status_msg
+        return ""
     
     def update_market(self, data: dict):
         ticker = data.get("ticker")
@@ -268,7 +286,10 @@ def build_layout() -> Layout:
     layout["events"].update(build_events_table())
     
     # Footer
-    footer_text = f"Server: {state.server_url}  |  Press Ctrl+C to exit"
+    footer_text = "[a]dd ticker  [r]emove ticker  [l]ist  [q]uit"
+    status = state.get_status()
+    if status:
+        footer_text = f"{status}  |  {footer_text}"
     layout["footer"].update(Panel(Text(footer_text, justify="center", style="dim")))
     
     return layout
@@ -286,6 +307,7 @@ async def connect_and_listen(url: str, token: str):
             async with websockets.connect(full_url, ssl=SSL_CONTEXT) as ws:
                 state.connected = True
                 state.connect_time = time.time()
+                state.ws = ws
                 console.print("✅ Connected!", style="green")
                 
                 while True:
@@ -308,16 +330,46 @@ async def connect_and_listen(url: str, token: str):
                     
                     elif msg_type == "heartbeat":
                         state.update_heartbeat(payload)
+                    
+                    elif msg_type == "ticker_added":
+                        state.set_status(f"✅ Added: {data.get('ticker')}")
+                    
+                    elif msg_type == "ticker_removed":
+                        ticker = data.get('ticker')
+                        state.markets.pop(ticker, None)
+                        state.set_status(f"➖ Removed: {ticker}")
+                    
+                    elif msg_type == "tickers_list":
+                        watched = data.get('watched', [])
+                        state.set_status(f"📋 Watching: {', '.join(watched) if watched else 'none'}")
                         
         except websockets.exceptions.ConnectionClosed:
             state.connected = False
+            state.ws = None
             console.print("❌ Connection lost, reconnecting in 3s...", style="red")
             await asyncio.sleep(3)
             
         except Exception as e:
             state.connected = False
+            state.ws = None
             console.print(f"❌ Error: {e}, reconnecting in 5s...", style="red")
             await asyncio.sleep(5)
+
+
+async def send_command(cmd_type: str, ticker: str = None):
+    """Send command to server."""
+    if not state.ws:
+        state.set_status("❌ Not connected")
+        return
+    
+    msg = {"type": cmd_type}
+    if ticker:
+        msg["ticker"] = ticker
+    
+    try:
+        await state.ws.send(json.dumps(msg))
+    except Exception as e:
+        state.set_status(f"❌ Send failed: {e}")
 
 
 async def run_display():
@@ -328,12 +380,62 @@ async def run_display():
             await asyncio.sleep(0.25)
 
 
+async def handle_keyboard():
+    """Handle keyboard input for commands."""
+    import termios
+    import tty
+    
+    # Save terminal settings
+    old_settings = termios.tcgetattr(sys.stdin)
+    
+    try:
+        tty.setcbreak(sys.stdin.fileno())
+        
+        while True:
+            # Check if input available
+            if select.select([sys.stdin], [], [], 0.1)[0]:
+                char = sys.stdin.read(1)
+                
+                if char == 'q':
+                    console.print("\n👋 Goodbye!", style="bold")
+                    sys.exit(0)
+                
+                elif char == 'l':
+                    await send_command("list_tickers")
+                
+                elif char == 'a':
+                    # Restore terminal for input
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                    console.print("\n")
+                    ticker = Prompt.ask("Enter ticker to add")
+                    tty.setcbreak(sys.stdin.fileno())
+                    if ticker:
+                        await send_command("add_ticker", ticker.upper())
+                
+                elif char == 'r':
+                    # Restore terminal for input
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+                    console.print("\n")
+                    ticker = Prompt.ask("Enter ticker to remove")
+                    tty.setcbreak(sys.stdin.fileno())
+                    if ticker:
+                        await send_command("remove_ticker", ticker.upper())
+            
+            await asyncio.sleep(0.1)
+    
+    except Exception:
+        pass
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+
 async def run_observer(url: str, token: str):
     """Main entry point."""
-    # Run both tasks
+    # Run all tasks
     await asyncio.gather(
         connect_and_listen(url, token),
-        run_display()
+        run_display(),
+        handle_keyboard()
     )
 
 
