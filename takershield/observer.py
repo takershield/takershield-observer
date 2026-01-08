@@ -96,6 +96,10 @@ class ObserverState:
         
         # Event tracking (from server)
         self.active_events: Dict[str, dict] = {}  # event_id -> EventRecord
+        
+        # Regime transition tracking
+        self.last_regime: Dict[str, str] = {}  # ticker -> last regime
+        self.cleared_at: Dict[str, float] = {}  # ticker -> timestamp when cleared from NO_QUOTE
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -110,6 +114,15 @@ class ObserverState:
     def update_market(self, data: dict):
         ticker = data.get("ticker")
         if ticker:
+            # Track regime transitions
+            new_regime = data.get("regime", "")
+            old_regime = self.last_regime.get(ticker, "")
+            
+            # Detect NO_QUOTE → SAFE transition (cleared)
+            if old_regime == "NO_QUOTE" and new_regime in ("SAFE", "CAUTION"):
+                self.cleared_at[ticker] = time.time()
+            
+            self.last_regime[ticker] = new_regime
             self.markets[ticker] = data
             self.updates_received += 1
             self.last_poll_latency = data.get("poll_latency_ms", 0)
@@ -243,6 +256,13 @@ def build_market_table() -> Table:
                 signal_str = "[red]NO_QUOTE[/red] [dim](ml)[/dim]"
             else:
                 signal_str = Text(regime, style=get_regime_style(regime))
+        elif regime == "SAFE":
+            # Check if recently cleared from NO_QUOTE
+            cleared_time = state.cleared_at.get(ticker, 0)
+            if time.time() - cleared_time < 5:
+                signal_str = "[bold green]SAFE[/bold green] [cyan](cleared)[/cyan]"
+            else:
+                signal_str = Text(regime, style=get_regime_style(regime))
         else:
             signal_str = Text(regime, style=get_regime_style(regime))
         
@@ -274,26 +294,30 @@ def build_events_table() -> Table:
         expand=True
     )
     
-    table.add_column("Ticker", width=28)
-    table.add_column("Trigger", width=14)
+    table.add_column("Ticker", width=26)
+    table.add_column("Trigger", width=12)
     table.add_column("Action", justify="center", width=8)
     table.add_column("Age", justify="right", width=6)
-    table.add_column("Move (30s/2m/5m)", justify="right", width=18)
+    table.add_column("Protected", justify="right", width=8)
+    table.add_column("Move (30s/2m/5m)", justify="right", width=16)
     
     now_ms = int(time.time() * 1000)
+    now_sec = time.time()
     
     # Show active events from server
     for event_id, event in list(state.active_events.items())[-10:]:
-        ticker = event.get("ticker", "?")[-28:]
-        triggers = ", ".join(event.get("trigger_reasons", []))[:14]
+        full_ticker = event.get("ticker", "?")
+        ticker = full_ticker[-26:]
+        triggers = ", ".join(event.get("trigger_reasons", []))[:12]
         
         # Get adverse moves (use max of both sides since we don't know direction)
         adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
         adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
         adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
         
-        # Calculate elapsed time
+        # Calculate elapsed time (Age)
         t0_ts = event.get("t0_ts", now_ms)
+        t0_sec = t0_ts / 1000
         elapsed_sec = (now_ms - t0_ts) / 1000
         tracking_complete = event.get("tracking_complete", False)
         
@@ -307,6 +331,31 @@ def build_events_table() -> Table:
             age_str = f"{mins}m{secs:02d}s"
         else:
             age_str = "[green]5m+[/green]"
+        
+        # Calculate duration (Protected) - how long they were protected
+        cleared_time = state.cleared_at.get(full_ticker, 0)
+        current_regime = state.last_regime.get(full_ticker, "")
+        
+        if current_regime == "NO_QUOTE":
+            # Still in NO_QUOTE - show ongoing duration
+            duration_sec = now_sec - t0_sec
+            if duration_sec < 60:
+                duration_str = f"[yellow]{int(duration_sec)}s[/yellow]"
+            else:
+                mins = int(duration_sec // 60)
+                secs = int(duration_sec % 60)
+                duration_str = f"[yellow]{mins}m{secs:02d}s[/yellow]"
+        elif cleared_time > t0_sec:
+            # Cleared - show final duration
+            duration_sec = cleared_time - t0_sec
+            if duration_sec < 60:
+                duration_str = f"[green]{int(duration_sec)}s[/green]"
+            else:
+                mins = int(duration_sec // 60)
+                secs = int(duration_sec % 60)
+                duration_str = f"[green]{mins}m{secs:02d}s[/green]"
+        else:
+            duration_str = "[dim]-[/dim]"
         
         # Action - always CANCEL in shadow mode
         action_str = "[red bold]CANCEL[/red bold]"
@@ -324,21 +373,22 @@ def build_events_table() -> Table:
         
         move_str = f"{color_move(adv_30s)}/{color_move(adv_2m)}/{color_move(adv_5m)}"
         
-        table.add_row(ticker, triggers, action_str, age_str, move_str)
+        table.add_row(ticker, triggers, action_str, age_str, duration_str, move_str)
     
     if not state.active_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
             triggers = ", ".join(event.get("trigger_reasons", []))
             table.add_row(
-                event.get("ticker", "?")[-28:],
-                triggers[:14],
+                event.get("ticker", "?")[-26:],
+                triggers[:12],
                 "[red bold]CANCEL[/red bold]",
+                "-",
                 "-",
                 "-"
             )
         if not state.would_cancel_events:
-            table.add_row("No events yet", "-", "-", "-", "-")
+            table.add_row("No events yet", "-", "-", "-", "-", "-")
     
     return table
 
