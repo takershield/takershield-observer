@@ -86,6 +86,9 @@ class ObserverState:
         # Available markets from browse
         self.available_markets: list = []
         self.available_markets_info: Optional[list] = None
+        
+        # Search results
+        self.search_results: list = []
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -369,6 +372,9 @@ async def connect_and_listen(url: str, token: str):
                     
                     elif msg_type == "error":
                         state.set_status(f"❌ {data.get('message', 'Unknown error')}", duration=10)
+                    
+                    elif msg_type == "search_results":
+                        state.search_results = data.get('tickers', [])
                         
         except websockets.exceptions.ConnectionClosed:
             state.connected = False
@@ -438,13 +444,53 @@ async def handle_keyboard():
                     if state.live:
                         state.live.stop()
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                    ticker = Prompt.ask("Enter ticker to add")
+                    
+                    console.print("\n[bold]Add Market[/bold]")
+                    console.print("Paste Kalshi URL or enter ticker directly:")
+                    
+                    user_input = Prompt.ask("URL or ticker")
+                    
+                    ticker = None
+                    if user_input:
+                        # Check if it's a URL
+                        if "kalshi.com" in user_input.lower():
+                            # Extract ticker from URL: .../kxunitedcupmatch-26jan08merkre
+                            parts = user_input.rstrip('/').split('/')
+                            ticker_part = parts[-1].upper()
+                            
+                            # Clear previous results
+                            state.search_results = []
+                            
+                            # Search for matching tickers
+                            if state.ws:
+                                await state.ws.send(json.dumps({"type": "search_ticker", "query": ticker_part}))
+                            await asyncio.sleep(1)
+                            
+                            if state.search_results:
+                                if len(state.search_results) == 1:
+                                    ticker = state.search_results[0]
+                                    console.print(f"[green]Found: {ticker}[/green]")
+                                else:
+                                    console.print(f"\n[bold]Found {len(state.search_results)} matching markets:[/bold]")
+                                    for i, t in enumerate(state.search_results, 1):
+                                        console.print(f"  {i}. {t}")
+                                    choice = Prompt.ask("Enter number to add")
+                                    if choice.isdigit():
+                                        idx = int(choice) - 1
+                                        if 0 <= idx < len(state.search_results):
+                                            ticker = state.search_results[idx]
+                            else:
+                                console.print(f"[yellow]No markets found matching: {ticker_part}[/yellow]")
+                                await asyncio.sleep(1)
+                        else:
+                            ticker = user_input.upper()
+                    
                     tty.setcbreak(sys.stdin.fileno())
                     if state.live:
                         state.live.start()
                     state.input_mode = False
                     if ticker:
-                        await send_command("add_ticker", ticker.upper())
+                        await send_command("add_ticker", ticker)
                 
                 elif char == 'r':
                     # Stop display and restore terminal for input
