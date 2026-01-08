@@ -341,7 +341,14 @@ async def connect_and_listen(url: str, token: str):
                         msg_ts = payload.get("timestamp_ms", 0)
                         if msg_ts:
                             state.last_ws_latency = recv_time - msg_ts
-                        state.update_market(payload)
+                        
+                        # Remove if expired
+                        ttc = payload.get("time_to_close_s", 0)
+                        if ttc < 0:
+                            ticker = payload.get("ticker")
+                            state.markets.pop(ticker, None)
+                        else:
+                            state.update_market(payload)
                     
                     elif msg_type == "would_cancel":
                         state.add_would_cancel(payload)
