@@ -182,8 +182,8 @@ def build_market_table() -> Table:
     table.add_column("Ask", justify="right", width=6)
     table.add_column("Mid", justify="right", width=7)
     table.add_column("Spread", justify="right", width=6)
-    table.add_column("Risk", justify="center", width=12)
-    table.add_column("Signal", justify="center", width=10)
+    table.add_column("Risk (0-1)", justify="center", width=12)
+    table.add_column("Signal", justify="center", width=14)
     table.add_column("Settles", justify="right", width=10)
     table.add_column("p99", justify="right", width=5)
     
@@ -191,6 +191,7 @@ def build_market_table() -> Table:
         regime = data.get("regime", "?")
         risk_score = data.get("risk_score", 0)
         ml_enabled = data.get("ml_enabled", False)
+        trigger_reasons = data.get("trigger_reasons", [])
         
         # Risk bar visualization - only show if ML enabled
         if ml_enabled:
@@ -205,6 +206,23 @@ def build_market_table() -> Table:
         else:
             risk_bar = "[dim]-- N/A --[/dim]"
         
+        # Signal with trigger reason for NO_QUOTE
+        if regime == "NO_QUOTE" and trigger_reasons:
+            # Show first trigger reason
+            reason = trigger_reasons[0]
+            if reason == "time_to_event":
+                signal_str = "[red]NO_QUOTE[/red] [dim](ttc)[/dim]"
+            elif reason == "spread_blowout":
+                signal_str = "[red]NO_QUOTE[/red] [dim](sprd)[/dim]"
+            elif reason == "high_volatility":
+                signal_str = "[red]NO_QUOTE[/red] [dim](vol)[/dim]"
+            elif reason == "ml_risk":
+                signal_str = "[red]NO_QUOTE[/red] [dim](ml)[/dim]"
+            else:
+                signal_str = Text(regime, style=get_regime_style(regime))
+        else:
+            signal_str = Text(regime, style=get_regime_style(regime))
+        
         table.add_row(
             ticker[-28:],  # Truncate ticker
             str(data.get("bid", "-")),
@@ -212,7 +230,7 @@ def build_market_table() -> Table:
             f"{data.get('mid', 0):.1f}" if data.get("mid") else "-",
             str(data.get("spread", "-")),
             risk_bar,
-            Text(regime, style=get_regime_style(regime)),
+            signal_str,
             format_time(data.get("time_to_close_s", 0)),
             f"{data.get('p99_move', 0):.1f}",
         )
@@ -294,25 +312,12 @@ def build_stats_panel() -> Panel:
         if ago > 15:
             data_stale = True
     
-    # Calculate total savings from completed events with would_fill
-    total_saved = 0.0
-    fill_count = 0
+    # Count cancels and total adverse move avoided
+    cancel_count = len(state.active_events) + len(state.would_cancel_events)
+    total_adverse_cents = 0.0
     for event in state.active_events.values():
-        if event.get("tracking_complete"):
-            side = state.quote_side
-            if side == "yes" and event.get("would_fill_yes"):
-                total_saved += (event.get("adverse_yes_5m", 0) / 100) * state.position_size
-                fill_count += 1
-            elif side == "no" and event.get("would_fill_no"):
-                total_saved += (event.get("adverse_no_5m", 0) / 100) * state.position_size
-                fill_count += 1
-            elif side == "both":
-                if event.get("would_fill_yes"):
-                    total_saved += (event.get("adverse_yes_5m", 0) / 100) * state.position_size
-                    fill_count += 1
-                if event.get("would_fill_no"):
-                    total_saved += (event.get("adverse_no_5m", 0) / 100) * state.position_size
-                    fill_count += 1
+        adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
+        total_adverse_cents += adv_5m
     
     content = Text()
     
@@ -330,11 +335,12 @@ def build_stats_panel() -> Panel:
     content.append(f"\n📨 Updates: {state.updates_received}")
     content.append(f"\n💓 Heartbeat: {heartbeat_ago}")
     
-    # Show savings only if side is known
-    if state.quote_side != "unknown" and fill_count > 0:
-        content.append(f"\n💰 Saved: ")
-        content.append(f"${total_saved:.2f}", style="green bold")
-        content.append(f" ({fill_count} fills)", style="dim")
+    # Show cancel stats
+    if cancel_count > 0:
+        content.append(f"\n\n🚨 Cancels: ")
+        content.append(f"{cancel_count}", style="red bold")
+        content.append(f"\n💰 Avoided: ")
+        content.append(f"{total_adverse_cents:.0f}¢", style="green bold")
     
     return Panel(content, title="Status", border_style="blue")
 
@@ -380,7 +386,7 @@ def build_layout() -> Layout:
     )
     
     layout["sidebar"].split_column(
-        Layout(name="stats", size=9),
+        Layout(name="stats", size=11),
         Layout(name="latency", size=7),
     )
     
