@@ -669,6 +669,7 @@ async def handle_keyboard():
                 
                 elif char == 'c':
                     state.would_cancel_events.clear()
+                    state.active_events.clear()
                     state.set_status("🗑️ Events cleared")
                 
                 elif char == 'a':
