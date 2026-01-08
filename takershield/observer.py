@@ -182,25 +182,9 @@ def format_time(seconds: float) -> str:
 
 def format_time_with_type(seconds: float, time_type: str) -> str:
     """Format time with indicator for type (ends vs closes)."""
-    if seconds < 0:
-        return "[red]EXPIRED[/red]"
-    if time_type == "closes":
-        # Settlement deadline - show with ~ prefix to indicate it's not event end
-        if seconds > 86400 * 7:
-            days = int(seconds // 86400)
-            return f"[dim]~{days}d[/dim]"
-        if seconds > 86400:
-            days = int(seconds // 86400)
-            return f"[dim]~{days}d[/dim]"
-        if seconds > 3600:
-            hours = int(seconds // 3600)
-            mins = int((seconds % 3600) // 60)
-            return f"[dim]~{hours}h {mins}m[/dim]"
-        mins = int(seconds // 60)
-        return f"[dim]~{mins}m[/dim]"
-    else:
-        # Expected event end - show normally
-        return format_time(seconds)
+    # Now that we pick the earlier of close_time and expected_expiration_time,
+    # we're always showing the most useful time. No need for ~ prefix.
+    return format_time(seconds)
 
 
 def build_market_table() -> Table:
