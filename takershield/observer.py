@@ -182,14 +182,24 @@ def build_market_table() -> Table:
     table.add_column("Ask", justify="right", width=6)
     table.add_column("Mid", justify="right", width=7)
     table.add_column("Spread", justify="right", width=6)
-    table.add_column("Risk", justify="right", width=7)
+    table.add_column("Risk", justify="center", width=12)
     table.add_column("Signal", justify="center", width=10)
-    table.add_column("Settles", justify="right", width=12)
-    table.add_column("p99", justify="right", width=6)
+    table.add_column("Settles", justify="right", width=10)
+    table.add_column("p99", justify="right", width=5)
     
     for ticker, data in state.markets.items():
         regime = data.get("regime", "?")
         risk_score = data.get("risk_score", 0)
+        
+        # Risk bar visualization
+        filled = int(risk_score * 10)
+        if risk_score >= 0.55:
+            bar_color = "red"
+        elif risk_score >= 0.35:
+            bar_color = "yellow"
+        else:
+            bar_color = "green"
+        risk_bar = f"[{bar_color}]" + "█" * filled + f"[/{bar_color}][dim]" + "░" * (10 - filled) + "[/dim]"
         
         table.add_row(
             ticker[-28:],  # Truncate ticker
@@ -197,7 +207,7 @@ def build_market_table() -> Table:
             str(data.get("ask", "-")),
             f"{data.get('mid', 0):.1f}" if data.get("mid") else "-",
             str(data.get("spread", "-")),
-            Text(f"{risk_score:.2f}", style=get_risk_style(risk_score)),
+            risk_bar,
             Text(regime, style=get_regime_style(regime)),
             format_time(data.get("time_to_close_s", 0)),
             f"{data.get('p99_move', 0):.1f}",
@@ -220,74 +230,47 @@ def build_events_table() -> Table:
     )
     
     table.add_column("Ticker", width=28)
-    table.add_column("Triggers", width=20)
-    table.add_column("Adverse (30s/2m/5m)", width=18)
-    table.add_column("Fill?", justify="center", width=8)
-    table.add_column("Saved", justify="right", width=14)
+    table.add_column("Trigger", width=16)
+    table.add_column("Action", justify="center", width=10)
+    table.add_column("Risk", justify="center", width=12)
+    table.add_column("Move (5m)", justify="right", width=10)
     
     # Show active events from server
     for event_id, event in list(state.active_events.items())[-10:]:
         ticker = event.get("ticker", "?")[-28:]
-        triggers = ", ".join(event.get("trigger_reasons", []))[:20]
+        triggers = ", ".join(event.get("trigger_reasons", []))[:16]
         
-        # Get adverse moves based on configured side
-        side = state.quote_side
-        if side == "yes":
-            adv_30s = event.get("adverse_yes_30s", 0)
-            adv_2m = event.get("adverse_yes_2m", 0)
-            adv_5m = event.get("adverse_yes_5m", 0)
-            would_fill = event.get("would_fill_yes", False)
-        elif side == "no":
-            adv_30s = event.get("adverse_no_30s", 0)
-            adv_2m = event.get("adverse_no_2m", 0)
-            adv_5m = event.get("adverse_no_5m", 0)
-            would_fill = event.get("would_fill_no", False)
-        elif side == "both":
-            # Show range - use max
-            adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
-            adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
-            adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
-            would_fill = event.get("would_fill_yes", False) or event.get("would_fill_no", False)
-        else:  # unknown
-            # Show both sides' max
-            adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
-            adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
-            adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
-            would_fill = None  # Unknown
+        # Get adverse moves (use max of both sides since we don't know direction)
+        adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
+        risk_score = event.get("risk_score", 0)
         
-        # Format adverse moves
-        adverse_str = f"{adv_30s:.0f}¢/{adv_2m:.0f}¢/{adv_5m:.0f}¢"
+        # Risk bar visualization (0-1 scale, 10 blocks)
+        filled = int(risk_score * 10)
+        risk_bar = "[red]" + "█" * filled + "[/red][dim]" + "░" * (10 - filled) + "[/dim]"
         
-        # Format would-fill
-        if would_fill is None:
-            fill_str = "[dim]?[/dim]"
-        elif would_fill:
-            fill_str = "[green]YES[/green]"
+        # Action - always CANCEL in shadow mode
+        action_str = "[red bold]CANCEL[/red bold]"
+        
+        # Move display
+        if adv_5m > 0:
+            move_str = f"[yellow]{adv_5m:.0f}¢[/yellow]"
         else:
-            fill_str = "[dim]no[/dim]"
+            move_str = "[dim]0¢[/dim]"
         
-        # Calculate saved (only if would_fill and side known)
-        if would_fill and side in ("yes", "no", "both"):
-            saved_cents = adv_5m
-            saved_dollars = (saved_cents / 100) * state.position_size
-            saved_str = f"[green]${saved_dollars:.2f}[/green]"
-        elif would_fill is False:
-            saved_str = "[dim]avoided[/dim]"
-        else:
-            # Unknown side - show cents only
-            saved_str = f"{adv_5m:.0f}¢ risk"
-        
-        table.add_row(ticker, triggers, adverse_str, fill_str, saved_str)
+        table.add_row(ticker, triggers, action_str, risk_bar, move_str)
     
     if not state.active_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
             triggers = ", ".join(event.get("trigger_reasons", []))
+            risk = event.get("risk_score", 0)
+            filled = int(risk * 10)
+            risk_bar = "[red]" + "█" * filled + "[/red][dim]" + "░" * (10 - filled) + "[/dim]"
             table.add_row(
                 event.get("ticker", "?")[-28:],
-                triggers[:20],
-                "-",
-                "-",
+                triggers[:16],
+                "[red bold]CANCEL[/red bold]",
+                risk_bar,
                 "-"
             )
         if not state.would_cancel_events:
@@ -389,8 +372,8 @@ def build_layout() -> Layout:
     )
     
     layout["left"].split_column(
-        Layout(name="markets", ratio=2),
-        Layout(name="events", ratio=1)
+        Layout(name="markets", size=12),
+        Layout(name="events")
     )
     
     layout["sidebar"].split_column(
