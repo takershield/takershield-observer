@@ -141,7 +141,20 @@ def get_risk_style(score: float) -> str:
 
 
 def format_time(seconds: float) -> str:
-    """Format seconds as mm:ss."""
+    """Format seconds as time string."""
+    if seconds < 0:
+        return "[red]EXPIRED[/red]"
+    if seconds > 86400 * 7:  # > 1 week
+        days = int(seconds // 86400)
+        return f"[dim]{days}d[/dim]"
+    if seconds > 86400:  # > 1 day
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        return f"{days}d {hours}h"
+    if seconds > 3600:  # > 1 hour
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
     mins = int(seconds // 60)
     secs = int(seconds % 60)
     return f"{mins}:{secs:02d}"
@@ -163,7 +176,7 @@ def build_market_table() -> Table:
     table.add_column("Spread", justify="right", width=6)
     table.add_column("Risk", justify="right", width=7)
     table.add_column("Regime", justify="center", width=10)
-    table.add_column("TTC", justify="right", width=7)
+    table.add_column("TTC", justify="right", width=12)
     table.add_column("p99", justify="right", width=6)
     
     for ticker, data in state.markets.items():
@@ -197,28 +210,19 @@ def build_events_table() -> Table:
         header_style="bold red"
     )
     
-    table.add_column("Time", width=10)
-    table.add_column("Ticker", width=20)
-    table.add_column("Risk", justify="right", width=6)
-    table.add_column("Mid", justify="right", width=6)
-    table.add_column("Triggers", width=30)
+    table.add_column("Ticker", width=28)
+    table.add_column("Triggers", width=20)
     
     for event in reversed(state.would_cancel_events[-10:]):
-        ts = event.get("timestamp_ms", 0) / 1000
-        time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
-        
         triggers = ", ".join(event.get("trigger_reasons", []))
         
         table.add_row(
-            time_str,
-            event.get("ticker", "?")[-20:],
-            f"{event.get('risk_score', 0):.2f}",
-            f"{event.get('mid_at_trigger', 0):.1f}",
-            triggers[:30]
+            event.get("ticker", "?")[-28:],
+            triggers
         )
     
     if not state.would_cancel_events:
-        table.add_row("-", "No events yet", "-", "-", "-")
+        table.add_row("No events yet", "-")
     
     return table
 
@@ -299,7 +303,7 @@ def build_layout() -> Layout:
     layout["events"].update(build_events_table())
     
     # Footer
-    footer_text = "[a]dd ticker  [r]emove ticker  [b]rowse  [l]ist  [q]uit"
+    footer_text = "[a]dd  [r]emove  [b]rowse  [d]emo  [l]ist  [c]lear  [q]uit"
     status = state.get_status()
     if status:
         footer_text = f"{status}  |  {footer_text}"
@@ -375,6 +379,17 @@ async def connect_and_listen(url: str, token: str):
                     
                     elif msg_type == "search_results":
                         state.search_results = data.get('tickers', [])
+                    
+                    elif msg_type == "ticker_expired":
+                        ticker = data.get('ticker')
+                        if ticker:
+                            state.markets.pop(ticker, None)
+                            state.set_status(f"⏰ Expired: {ticker}", duration=5)
+                    
+                    elif msg_type == "ticker_expired":
+                        ticker = data.get('ticker')
+                        state.markets.pop(ticker, None)
+                        state.set_status(f"⏰ Expired: {ticker}")
                         
         except websockets.exceptions.ConnectionClosed:
             state.connected = False
@@ -437,6 +452,15 @@ async def handle_keyboard():
                 
                 elif char == 'l':
                     await send_command("list_tickers")
+                
+                elif char == 'd':
+                    # Demo mode - load latest BTC 15m
+                    await send_command("demo_btc15m")
+                    state.set_status("🎯 Loading BTC 15m demo...")
+                
+                elif char == 'c':
+                    state.would_cancel_events.clear()
+                    state.set_status("🗑️ Events cleared")
                 
                 elif char == 'a':
                     # Stop display and restore terminal for input
