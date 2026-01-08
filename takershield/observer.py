@@ -275,19 +275,38 @@ def build_events_table() -> Table:
     )
     
     table.add_column("Ticker", width=28)
-    table.add_column("Trigger", width=16)
-    table.add_column("Action", justify="center", width=10)
+    table.add_column("Trigger", width=14)
+    table.add_column("Action", justify="center", width=8)
+    table.add_column("Age", justify="right", width=6)
     table.add_column("Move (30s/2m/5m)", justify="right", width=18)
+    
+    now_ms = int(time.time() * 1000)
     
     # Show active events from server
     for event_id, event in list(state.active_events.items())[-10:]:
         ticker = event.get("ticker", "?")[-28:]
-        triggers = ", ".join(event.get("trigger_reasons", []))[:16]
+        triggers = ", ".join(event.get("trigger_reasons", []))[:14]
         
         # Get adverse moves (use max of both sides since we don't know direction)
         adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
         adv_2m = max(event.get("adverse_yes_2m", 0), event.get("adverse_no_2m", 0))
         adv_5m = max(event.get("adverse_yes_5m", 0), event.get("adverse_no_5m", 0))
+        
+        # Calculate elapsed time
+        t0_ts = event.get("t0_ts", now_ms)
+        elapsed_sec = (now_ms - t0_ts) / 1000
+        tracking_complete = event.get("tracking_complete", False)
+        
+        if tracking_complete:
+            age_str = "[green]done[/green]"
+        elif elapsed_sec < 60:
+            age_str = f"{int(elapsed_sec)}s"
+        elif elapsed_sec < 300:
+            mins = int(elapsed_sec // 60)
+            secs = int(elapsed_sec % 60)
+            age_str = f"{mins}m{secs:02d}s"
+        else:
+            age_str = "[green]5m+[/green]"
         
         # Action - always CANCEL in shadow mode
         action_str = "[red bold]CANCEL[/red bold]"
@@ -305,7 +324,7 @@ def build_events_table() -> Table:
         
         move_str = f"{color_move(adv_30s)}/{color_move(adv_2m)}/{color_move(adv_5m)}"
         
-        table.add_row(ticker, triggers, action_str, move_str)
+        table.add_row(ticker, triggers, action_str, age_str, move_str)
     
     if not state.active_events:
         # Fall back to legacy events
@@ -313,12 +332,13 @@ def build_events_table() -> Table:
             triggers = ", ".join(event.get("trigger_reasons", []))
             table.add_row(
                 event.get("ticker", "?")[-28:],
-                triggers[:16],
+                triggers[:14],
                 "[red bold]CANCEL[/red bold]",
+                "-",
                 "-"
             )
         if not state.would_cancel_events:
-            table.add_row("No events yet", "-", "-", "-")
+            table.add_row("No events yet", "-", "-", "-", "-")
     
     return table
 
