@@ -723,7 +723,8 @@ async def handle_keyboard():
                                             ticker = state.search_results[idx]
                             else:
                                 console.print(f"[yellow]No markets found matching: {ticker_part}[/yellow]")
-                                await asyncio.sleep(1)
+                                console.print("[dim]Press Enter to continue...[/dim]")
+                                input()
                         else:
                             ticker = user_input.upper()
                     
