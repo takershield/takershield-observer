@@ -634,11 +634,20 @@ async def handle_keyboard():
                                     ticker = state.search_results[0]
                                     console.print(f"[green]Found: {ticker}[/green]")
                                 else:
-                                    console.print(f"\n[bold]Found {len(state.search_results)} matching markets:[/bold]")
-                                    for i, t in enumerate(state.search_results, 1):
+                                    console.print(f"\n[bold]Event has {len(state.search_results)} markets:[/bold]")
+                                    for i, t in enumerate(state.search_results[:10], 1):
                                         console.print(f"  {i}. {t}")
-                                    choice = Prompt.ask("Enter number to add")
-                                    if choice.isdigit():
+                                    if len(state.search_results) > 10:
+                                        console.print(f"  ... and {len(state.search_results) - 10} more")
+                                    console.print(f"  [cyan]0. Add ALL[/cyan]")
+                                    choice = Prompt.ask("Enter number (0=all)")
+                                    if choice == "0":
+                                        # Add all markets
+                                        for t in state.search_results:
+                                            await send_command("add_ticker", t)
+                                        console.print(f"[green]Added {len(state.search_results)} markets[/green]")
+                                        ticker = None  # Already added
+                                    elif choice.isdigit():
                                         idx = int(choice) - 1
                                         if 0 <= idx < len(state.search_results):
                                             ticker = state.search_results[idx]
