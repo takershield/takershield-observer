@@ -96,6 +96,7 @@ class ObserverState:
         
         # Event tracking (from server)
         self.active_events: Dict[str, dict] = {}  # event_id -> EventRecord
+        self.cleared_events_ts: float = 0  # Events before this timestamp are hidden
         
         # Regime transition tracking
         self.last_regime: Dict[str, str] = {}  # ticker -> last regime
@@ -129,9 +130,13 @@ class ObserverState:
             self.last_compute_latency = data.get("compute_latency_ms", 0)
     
     def add_would_cancel(self, data: dict):
-        self.would_cancel_events.append(data)
-        if len(self.would_cancel_events) > self.max_events:
-            self.would_cancel_events.pop(0)
+        # Only add events after cleared timestamp
+        # WouldCancelEvent uses timestamp_ms, EventRecord uses t0_ts
+        ts = data.get("t0_ts") or data.get("timestamp_ms", 0)
+        if ts > self.cleared_events_ts:
+            self.would_cancel_events.append(data)
+            if len(self.would_cancel_events) > self.max_events:
+                self.would_cancel_events.pop(0)
     
     def update_heartbeat(self, data: dict):
         self.last_heartbeat = time.time()
@@ -549,7 +554,9 @@ async def connect_and_listen(url: str, token: str):
                     elif msg_type == "event_update":
                         # Update event tracking from server
                         event_id = payload.get("event_id")
-                        if event_id:
+                        ts = payload.get("t0_ts") or payload.get("timestamp_ms", 0)
+                        # Only show events after cleared timestamp
+                        if event_id and ts > state.cleared_events_ts:
                             state.active_events[event_id] = payload
                     
                     elif msg_type == "heartbeat":
@@ -666,6 +673,8 @@ async def handle_keyboard():
                     state.set_status("🎯 Loading BTC 15m demo...")
                 
                 elif char == 'c':
+                    # Set cleared timestamp - events before this will be hidden
+                    state.cleared_events_ts = time.time() * 1000  # ms to match t0_ts
                     state.would_cancel_events.clear()
                     state.active_events.clear()
                     state.set_status("🗑️ Events cleared")
