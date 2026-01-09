@@ -208,7 +208,7 @@ def build_market_table() -> Table:
     table.add_column("Mid", justify="right", width=7)
     table.add_column("Spread", justify="right", width=6)
     table.add_column("Depth", justify="right", width=8)
-    table.add_column("Signal", justify="center", width=18)
+    table.add_column("Signal", justify="center", width=24)
     table.add_column("Closes", justify="right", width=10)
     table.add_column("p99", justify="right", width=5)
     
@@ -231,41 +231,41 @@ def build_market_table() -> Table:
         caution_reasons = data.get("caution_reasons", [])
         
         if regime == "NO_QUOTE" and trigger_reasons:
-            # Show first trigger reason
+            # Show first trigger reason with emoji
             reason = trigger_reasons[0]
             if reason == "time_to_event":
-                signal_str = "[red]NO_QUOTE[/red] [dim](ttc)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](ttc⬇️)[/dim]"
             elif reason == "spread_blowout":
-                signal_str = "[red]NO_QUOTE[/red] [dim](sprd)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](sprd⬆️)[/dim]"
             elif reason == "high_volatility":
-                signal_str = "[red]NO_QUOTE[/red] [dim](p99)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](p99⬆️)[/dim]"
             elif reason == "ttc_spread":
-                signal_str = "[red]NO_QUOTE[/red] [dim](ttc+sprd)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](ttc+sprd)[/dim]"
             elif reason == "vol_spread":
-                signal_str = "[red]NO_QUOTE[/red] [dim](p99+sprd)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](p99+sprd)[/dim]"
             elif reason == "ml_risk":
-                signal_str = "[red]NO_QUOTE[/red] [dim](ml)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](ml)[/dim]"
             else:
                 signal_str = Text(regime, style=get_regime_style(regime))
         elif regime == "CAUTION" and caution_reasons:
-            # Show first caution reason with direction
+            # Show first caution reason with direction emoji
             reason = caution_reasons[0]
             reason_labels = {
-                "spread_elevated": "sprd↑",
-                "spread_widening": "sprd↑",
-                "volatility_rising": "vol↑",
-                "depth_dropping": "depth↓",
-                "time_approaching": "ttc↓",
+                "spread_elevated": "sprd⬆️",
+                "spread_widening": "sprd⬆️",
+                "volatility_rising": "vol⬆️",
+                "depth_dropping": "depth⬇️",
+                "time_approaching": "ttc⬇️",
             }
             label = reason_labels.get(reason, reason[:6])
-            signal_str = f"[yellow]CAUTION[/yellow] [dim]({label})[/dim]"
+            signal_str = f"[yellow]⚠️ CAUTION[/yellow] [dim]({label})[/dim]"
         elif regime == "SAFE":
             # Check if recently cleared from NO_QUOTE
             cleared_time = state.cleared_at.get(ticker, 0)
             if time.time() - cleared_time < 5:
-                signal_str = "[bold green]SAFE[/bold green] [cyan](cleared)[/cyan]"
+                signal_str = "[bold green]✅ SAFE[/bold green] [cyan](cleared)[/cyan]"
             else:
-                signal_str = Text(regime, style=get_regime_style(regime))
+                signal_str = "[bold green]✅ SAFE[/bold green]"
         else:
             signal_str = Text(regime, style=get_regime_style(regime))
         
@@ -298,8 +298,8 @@ def build_events_table() -> Table:
     )
     
     table.add_column("Ticker", width=26)
-    table.add_column("Trigger", width=12)
-    table.add_column("Action", justify="center", width=8)
+    table.add_column("Trigger", width=14)
+    table.add_column("Action", justify="center", width=12)
     table.add_column("Age", justify="right", width=6)
     table.add_column("Shielded", justify="right", width=8)
     table.add_column("Move (30s/2m/5m)", justify="right", width=16)
@@ -307,13 +307,13 @@ def build_events_table() -> Table:
     now_ms = int(time.time() * 1000)
     now_sec = time.time()
     
-    # Map trigger reasons to short display names
+    # Map trigger reasons to short display names with emoji
     trigger_labels = {
-        "spread_blowout": "sprd",
-        "time_to_event": "ttc",
+        "spread_blowout": "sprd⬆️",
+        "time_to_event": "ttc⬇️",
         "ttc_spread": "ttc+sprd",
         "vol_spread": "vol+sprd",
-        "high_volatility": "vol",
+        "high_volatility": "vol⬆️",
     }
     
     # Show active events from server
@@ -372,7 +372,7 @@ def build_events_table() -> Table:
             duration_str = "[dim]-[/dim]"
         
         # Action - always CANCEL in shadow mode
-        action_str = "[red bold]CANCEL[/red bold]"
+        action_str = "[red bold]🛑 CANCEL[/red bold]"
         
         # Move display - color code by severity
         def color_move(m):
@@ -398,7 +398,7 @@ def build_events_table() -> Table:
             table.add_row(
                 event.get("ticker", "?")[-26:],
                 trigger_str,
-                "[red bold]CANCEL[/red bold]",
+                "[red bold]🛑 CANCEL[/red bold]",
                 "-",
                 "-",
                 "-"
