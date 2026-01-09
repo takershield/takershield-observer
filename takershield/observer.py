@@ -227,7 +227,9 @@ def build_market_table() -> Table:
         else:
             risk_bar = "[dim]-- N/A --[/dim]"
         
-        # Signal with trigger reason for NO_QUOTE
+        # Signal with trigger reason for NO_QUOTE or CAUTION
+        caution_reasons = data.get("caution_reasons", [])
+        
         if regime == "NO_QUOTE" and trigger_reasons:
             # Show first trigger reason
             reason = trigger_reasons[0]
@@ -245,6 +247,18 @@ def build_market_table() -> Table:
                 signal_str = "[red]NO_QUOTE[/red] [dim](ml)[/dim]"
             else:
                 signal_str = Text(regime, style=get_regime_style(regime))
+        elif regime == "CAUTION" and caution_reasons:
+            # Show first caution reason
+            reason = caution_reasons[0]
+            reason_labels = {
+                "spread_elevated": "sprd↑",
+                "spread_widening": "sprd⇡",
+                "volatility_rising": "vol↑",
+                "depth_dropping": "depth↓",
+                "time_approaching": "ttc↓",
+            }
+            label = reason_labels.get(reason, reason[:6])
+            signal_str = f"[yellow]CAUTION[/yellow] [dim]({label})[/dim]"
         elif regime == "SAFE":
             # Check if recently cleared from NO_QUOTE
             cleared_time = state.cleared_at.get(ticker, 0)
