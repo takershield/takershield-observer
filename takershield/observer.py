@@ -248,14 +248,14 @@ def build_market_table() -> Table:
             else:
                 signal_str = Text(regime, style=get_regime_style(regime))
         elif regime == "CAUTION" and caution_reasons:
-            # Show first caution reason
+            # Show first caution reason with direction
             reason = caution_reasons[0]
             reason_labels = {
-                "spread_elevated": "sprd",
-                "spread_widening": "sprd",
-                "volatility_rising": "vol",
-                "depth_dropping": "depth",
-                "time_approaching": "ttc",
+                "spread_elevated": "sprd↑",
+                "spread_widening": "sprd↑",
+                "volatility_rising": "vol↑",
+                "depth_dropping": "depth↓",
+                "time_approaching": "ttc↓",
             }
             label = reason_labels.get(reason, reason[:6])
             signal_str = f"[yellow]CAUTION[/yellow] [dim]({label})[/dim]"
@@ -301,7 +301,7 @@ def build_events_table() -> Table:
     table.add_column("Trigger", width=12)
     table.add_column("Action", justify="center", width=8)
     table.add_column("Age", justify="right", width=6)
-    table.add_column("Protected", justify="right", width=8)
+    table.add_column("Shielded", justify="right", width=8)
     table.add_column("Move (30s/2m/5m)", justify="right", width=16)
     
     now_ms = int(time.time() * 1000)
@@ -312,6 +312,7 @@ def build_events_table() -> Table:
         full_ticker = event.get("ticker", "?")
         ticker = full_ticker[-26:]
         triggers = ", ".join(event.get("trigger_reasons", []))[:12]
+        trigger_str = f"[bold red]{triggers}[/bold red]"
         
         # Get adverse moves (use max of both sides since we don't know direction)
         adv_30s = max(event.get("adverse_yes_30s", 0), event.get("adverse_no_30s", 0))
@@ -376,15 +377,16 @@ def build_events_table() -> Table:
         
         move_str = f"{color_move(adv_30s)}/{color_move(adv_2m)}/{color_move(adv_5m)}"
         
-        table.add_row(ticker, triggers, action_str, age_str, duration_str, move_str)
+        table.add_row(ticker, trigger_str, action_str, age_str, duration_str, move_str)
     
     if not state.active_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
             triggers = ", ".join(event.get("trigger_reasons", []))
+            trigger_str = f"[bold red]{triggers[:12]}[/bold red]"
             table.add_row(
                 event.get("ticker", "?")[-26:],
-                triggers[:12],
+                trigger_str,
                 "[red bold]CANCEL[/red bold]",
                 "-",
                 "-",
