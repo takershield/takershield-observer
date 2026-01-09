@@ -246,11 +246,11 @@ def build_market_table() -> Table:
             # Show first caution reason
             reason = caution_reasons[0]
             reason_labels = {
-                "spread_elevated": "sprd⬆️",
-                "spread_widening": "sprd⬆️",
-                "volatility_rising": "vol⬆️",
-                "depth_dropping": "depth⬇️",
-                "time_approaching": "ttc⬇️",
+                "spread_elevated": "sprd",
+                "spread_widening": "sprd",
+                "volatility_rising": "vol",
+                "depth_dropping": "depth",
+                "time_approaching": "ttc",
             }
             label = reason_labels.get(reason, reason[:6])
             signal_str = f"[yellow]CAUTION[/yellow] [dim]({label})[/dim]"
