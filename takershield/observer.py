@@ -255,7 +255,8 @@ def build_market_table() -> Table:
                 "spread_widening": "sprd⬆️",
                 "volatility_rising": "vol⬆️",
                 "depth_dropping": "depth⬇️",
-                "time_approaching": "ttc⬇️",
+                "time_liquidity": "late+liq",
+                "time_approaching": "ttc⬇️",  # legacy
             }
             label = reason_labels.get(reason, reason[:6])
             signal_str = f"[yellow]⚠️ CAUTION[/yellow] [dim]({label})[/dim]"
@@ -314,6 +315,7 @@ def build_events_table() -> Table:
         "ttc_spread": "ttc+sprd",
         "vol_spread": "vol+sprd",
         "high_volatility": "vol⬆️",
+        "time_liquidity": "late+liq",
     }
     
     # Show active events from server
