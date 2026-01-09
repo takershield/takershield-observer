@@ -307,11 +307,21 @@ def build_events_table() -> Table:
     now_ms = int(time.time() * 1000)
     now_sec = time.time()
     
+    # Map trigger reasons to short display names
+    trigger_labels = {
+        "spread_blowout": "sprd",
+        "time_to_event": "ttc",
+        "ttc_spread": "ttc+sprd",
+        "vol_spread": "vol+sprd",
+        "high_volatility": "vol",
+    }
+    
     # Show active events from server
     for event_id, event in list(state.active_events.items())[-10:]:
         full_ticker = event.get("ticker", "?")
         ticker = full_ticker[-26:]
-        triggers = ", ".join(event.get("trigger_reasons", []))[:12]
+        raw_triggers = event.get("trigger_reasons", [])
+        triggers = ", ".join(trigger_labels.get(t, t[:6]) for t in raw_triggers)
         trigger_str = f"[bold red]{triggers}[/bold red]"
         
         # Get adverse moves (use max of both sides since we don't know direction)
@@ -382,8 +392,9 @@ def build_events_table() -> Table:
     if not state.active_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
-            triggers = ", ".join(event.get("trigger_reasons", []))
-            trigger_str = f"[bold red]{triggers[:12]}[/bold red]"
+            raw_triggers = event.get("trigger_reasons", [])
+            triggers = ", ".join(trigger_labels.get(t, t[:6]) for t in raw_triggers)
+            trigger_str = f"[bold red]{triggers}[/bold red]"
             table.add_row(
                 event.get("ticker", "?")[-26:],
                 trigger_str,
