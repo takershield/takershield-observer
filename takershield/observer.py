@@ -237,6 +237,10 @@ def build_market_table() -> Table:
                 signal_str = "[red]NO_QUOTE[/red] [dim](sprd)[/dim]"
             elif reason == "high_volatility":
                 signal_str = "[red]NO_QUOTE[/red] [dim](p99)[/dim]"
+            elif reason == "ttc_spread":
+                signal_str = "[red]NO_QUOTE[/red] [dim](ttc+sprd)[/dim]"
+            elif reason == "vol_spread":
+                signal_str = "[red]NO_QUOTE[/red] [dim](p99+sprd)[/dim]"
             elif reason == "ml_risk":
                 signal_str = "[red]NO_QUOTE[/red] [dim](ml)[/dim]"
             else:
