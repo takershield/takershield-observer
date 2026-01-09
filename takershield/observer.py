@@ -202,30 +202,25 @@ def build_market_table() -> Table:
     table.add_column("Ask", justify="right", width=6)
     table.add_column("Mid", justify="right", width=7)
     table.add_column("Spread", justify="right", width=6)
-    table.add_column("Risk (0-1)", justify="center", width=12)
-    table.add_column("Signal", justify="center", width=16)
+    table.add_column("Depth", justify="right", width=8)
+    table.add_column("Signal", justify="center", width=18)
     table.add_column("Closes", justify="right", width=10)
     table.add_column("p99", justify="right", width=5)
     
     for ticker, data in state.markets.items():
         regime = data.get("regime", "?")
-        risk_score = data.get("risk_score", 0)
-        ml_enabled = data.get("ml_enabled", False)
         trigger_reasons = data.get("trigger_reasons", [])
+        depth = data.get("depth", 0)
         
-        # Risk bar visualization - only show if ML enabled
-        if ml_enabled:
-            filled = int(risk_score * 10)
-            # Week-1 thresholds: NO_QUOTE >= 0.65, WIDEN 0.50-0.65
-            if risk_score >= 0.65:
-                bar_color = "red"
-            elif risk_score >= 0.50:
-                bar_color = "yellow"
-            else:
-                bar_color = "green"
-            risk_bar = f"[{bar_color}]" + "█" * filled + f"[/{bar_color}][dim]" + "░" * (10 - filled) + "[/dim]"
+        # Format depth with color based on level
+        if depth and depth >= 1000:
+            depth_str = f"[green]{depth:,}[/green]"
+        elif depth and depth >= 300:
+            depth_str = f"[yellow]{depth:,}[/yellow]"
+        elif depth:
+            depth_str = f"[red]{depth:,}[/red]"
         else:
-            risk_bar = "[dim]-- N/A --[/dim]"
+            depth_str = "[dim]-[/dim]"
         
         # Signal with trigger reason for NO_QUOTE or CAUTION
         caution_reasons = data.get("caution_reasons", [])
@@ -275,7 +270,7 @@ def build_market_table() -> Table:
             str(data.get("ask", "-")),
             f"{data.get('mid', 0):.1f}" if data.get("mid") else "-",
             str(data.get("spread", "-")),
-            risk_bar,
+            depth_str,
             signal_str,
             format_time_with_type(data.get("time_to_close_s", 0), data.get("time_type", "closes")),
             f"{data.get('p99_move', 0):.1f}",
