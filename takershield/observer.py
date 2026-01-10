@@ -170,7 +170,7 @@ def get_risk_style(score: float) -> str:
 def format_time(seconds: float) -> str:
     """Format seconds as time string."""
     if seconds < 0:
-        return "[red]EXPIRED[/red]"
+        return "[yellow]OT[/yellow]"  # Overtime - past expected but still active
     if seconds > 86400 * 7:  # > 1 week
         days = int(seconds // 86400)
         return f"[dim]{days}d[/dim]"
@@ -189,6 +189,9 @@ def format_time(seconds: float) -> str:
 
 def format_time_with_type(seconds: float, time_type: str) -> str:
     """Format time with indicator for type (ends vs closes)."""
+    # Handle closed/settled markets
+    if time_type == "closed":
+        return "[red]CLOSED[/red]"
     # Now that we pick the earlier of close_time and expected_expiration_time,
     # we're always showing the most useful time. No need for ~ prefix.
     return format_time(seconds)
@@ -247,6 +250,8 @@ def build_market_table() -> Table:
                 signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( p99+sprd )[/dim]"
             elif reason == "no_book":
                 signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( no book )[/dim]"
+            elif reason == "market_closed":
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( closed )[/dim]"
             elif reason == "ml_risk":
                 signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( ml )[/dim]"
             else:
@@ -321,6 +326,7 @@ def build_events_table() -> Table:
         "high_volatility": "vol ⬆️",
         "time_liquidity": "late+liq",
         "no_book": "no book",
+        "market_closed": "closed",
     }
     
     # Show active events from server (filter out old completed events)
@@ -618,15 +624,22 @@ async def connect_and_listen(url: str, token: str):
                             state.available_markets = markets
                             state.available_markets_info = None
                         if markets:
-                            state.set_status(f"📋 Found {len(markets)} markets - check terminal", duration=10)
+                            state.set_status(f"📋 Found {len(markets)} contracts - check terminal", duration=10)
                         else:
-                            state.set_status("❌ No markets found")
+                            state.set_status("❌ No contracts found")
                     
                     elif msg_type == "error":
                         state.set_status(f"❌ {data.get('message', 'Unknown error')}", duration=10)
                     
                     elif msg_type == "search_results":
-                        state.search_results = data.get('tickers', [])
+                        # Handle both old format (tickers list) and new format (contracts list with subtitle)
+                        contracts = data.get('contracts', [])
+                        if contracts:
+                            state.search_results = contracts  # List of {ticker, subtitle}
+                        else:
+                            # Fallback for old format
+                            tickers = data.get('tickers', [])
+                            state.search_results = [{"ticker": t, "subtitle": ""} for t in tickers]
                     
                     elif msg_type == "ticker_expired":
                         ticker = data.get('ticker')
@@ -737,34 +750,51 @@ async def handle_keyboard():
                             state.search_results = []
                             
                             # Search for matching tickers
+                            console.print(f"[dim]Searching for: {ticker_part}...[/dim]")
                             if state.ws:
                                 await state.ws.send(json.dumps({"type": "search_ticker", "query": ticker_part}))
-                            await asyncio.sleep(1)
+                            
+                            # Wait up to 3 seconds for results
+                            for _ in range(6):
+                                await asyncio.sleep(0.5)
+                                if state.search_results:
+                                    break
                             
                             if state.search_results:
                                 if len(state.search_results) == 1:
-                                    ticker = state.search_results[0]
+                                    ticker = state.search_results[0].get("ticker") if isinstance(state.search_results[0], dict) else state.search_results[0]
                                     console.print(f"[green]Found: {ticker}[/green]")
                                 else:
-                                    console.print(f"\n[bold]Event has {len(state.search_results)} markets:[/bold]")
-                                    for i, t in enumerate(state.search_results[:10], 1):
-                                        console.print(f"  {i}. {t}")
+                                    console.print(f"\n[bold]Event has {len(state.search_results)} contracts:[/bold]")
+                                    for i, item in enumerate(state.search_results[:10], 1):
+                                        if isinstance(item, dict):
+                                            t = item.get("ticker", "")
+                                            subtitle = item.get("subtitle", "")
+                                            if subtitle:
+                                                console.print(f"  {i}. {t} [dim]({subtitle})[/dim]")
+                                            else:
+                                                console.print(f"  {i}. {t}")
+                                        else:
+                                            console.print(f"  {i}. {item}")
                                     if len(state.search_results) > 10:
                                         console.print(f"  ... and {len(state.search_results) - 10} more")
-                                    console.print(f"  [cyan]0. Add ALL[/cyan]")
-                                    choice = Prompt.ask("Enter number (0=all)")
+                                    both_all = "both" if len(state.search_results) == 2 else "all"
+                                    console.print(f"  [cyan]0. All (observe {both_all})[/cyan]")
+                                    choice = Prompt.ask("Select contract to observe (0=all)")
                                     if choice == "0":
-                                        # Add all markets
-                                        for t in state.search_results:
+                                        # Add all contracts
+                                        for item in state.search_results:
+                                            t = item.get("ticker") if isinstance(item, dict) else item
                                             await send_command("add_ticker", t)
-                                        console.print(f"[green]Added {len(state.search_results)} markets[/green]")
+                                        console.print(f"[green]Added {len(state.search_results)} contracts[/green]")
                                         ticker = None  # Already added
                                     elif choice.isdigit():
                                         idx = int(choice) - 1
                                         if 0 <= idx < len(state.search_results):
-                                            ticker = state.search_results[idx]
+                                            item = state.search_results[idx]
+                                            ticker = item.get("ticker") if isinstance(item, dict) else item
                             else:
-                                console.print(f"[yellow]No markets found matching: {ticker_part}[/yellow]")
+                                console.print(f"[yellow]No contracts found matching: {ticker_part}[/yellow]")
                                 console.print("[dim]Press Enter to continue...[/dim]")
                                 input()
                         else:
@@ -790,8 +820,8 @@ async def handle_keyboard():
                         console.print("\n[bold]Currently watching:[/bold]")
                         for i, ticker in enumerate(watched, 1):
                             console.print(f"  {i}. {ticker}")
-                        console.print(f"  [cyan]0. Remove ALL[/cyan]")
-                        choice = Prompt.ask("Enter number (0=all)")
+                        console.print(f"  [cyan]0. Remove all[/cyan]")
+                        choice = Prompt.ask("Select contract to remove (0=all)")
                         
                         ticker = None
                         if choice == "0":
@@ -799,7 +829,7 @@ async def handle_keyboard():
                             for t in watched:
                                 await send_command("remove_ticker", t)
                             state.markets.clear()
-                            console.print(f"[green]Removed {len(watched)} markets[/green]")
+                            console.print(f"[green]Removed {len(watched)} contracts[/green]")
                         elif choice.isdigit():
                             idx = int(choice) - 1
                             if 0 <= idx < len(watched):
@@ -837,13 +867,13 @@ async def handle_keyboard():
                     
                     series = Prompt.ask("Enter series", default="KXBTC15M")
                     
-                    # Request available markets
+                    # Request available contracts
                     if state.ws:
                         await state.ws.send(json.dumps({"type": "list_available", "series": series.upper()}))
                     await asyncio.sleep(1)  # Wait for response
                     
                     if state.available_markets:
-                        console.print(f"\n[bold]Available {series.upper()} Markets (soonest first):[/bold]")
+                        console.print(f"\n[bold]Available {series.upper()} contracts (soonest first):[/bold]")
                         if state.available_markets_info:
                             for i, info in enumerate(state.available_markets_info, 1):
                                 ttc = info.get('ttc_mins', 0)
@@ -855,13 +885,13 @@ async def handle_keyboard():
                         else:
                             for i, ticker in enumerate(state.available_markets, 1):
                                 console.print(f"  {i}. {ticker}")
-                        choice = Prompt.ask("Enter number to add (or press Enter to cancel)")
+                        choice = Prompt.ask("Select contract to add (or press Enter to cancel)")
                         if choice.isdigit():
                             idx = int(choice) - 1
                             if 0 <= idx < len(state.available_markets):
                                 await send_command("add_ticker", state.available_markets[idx])
                     else:
-                        console.print(f"\n[yellow]No open markets found for {series}[/yellow]")
+                        console.print(f"\n[yellow]No open contracts found for {series}[/yellow]")
                         await asyncio.sleep(1)
                     
                     tty.setcbreak(sys.stdin.fileno())
