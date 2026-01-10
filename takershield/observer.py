@@ -234,32 +234,32 @@ def build_market_table() -> Table:
             # Show first trigger reason with emoji
             reason = trigger_reasons[0]
             if reason == "time_to_event":
-                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](ttc⬇️)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( ttc ⬇️ )[/dim]"
             elif reason == "spread_blowout":
-                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](sprd⬆️)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( sprd ⬆️ )[/dim]"
             elif reason == "high_volatility":
-                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](p99⬆️)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( p99 ⬆️ )[/dim]"
             elif reason == "ttc_spread":
-                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](ttc+sprd)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( ttc+sprd )[/dim]"
             elif reason == "vol_spread":
-                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](p99+sprd)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( p99+sprd )[/dim]"
             elif reason == "ml_risk":
-                signal_str = "[red]🛑 NO_QUOTE[/red] [dim](ml)[/dim]"
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( ml )[/dim]"
             else:
                 signal_str = Text(regime, style=get_regime_style(regime))
         elif regime == "CAUTION" and caution_reasons:
             # Show first caution reason with direction emoji
             reason = caution_reasons[0]
             reason_labels = {
-                "spread_elevated": "sprd⬆️",
-                "spread_widening": "sprd⬆️",
-                "volatility_rising": "vol⬆️",
-                "depth_dropping": "depth⬇️",
+                "spread_elevated": "sprd ⬆️",
+                "spread_widening": "sprd ⬆️",
+                "volatility_rising": "vol ⬆️",
+                "depth_dropping": "depth ⬇️",
                 "time_liquidity": "late+liq",
-                "time_approaching": "ttc⬇️",  # legacy
+                "time_approaching": "ttc ⬇️",  # legacy
             }
             label = reason_labels.get(reason, reason[:6])
-            signal_str = f"[yellow]⚠️ CAUTION[/yellow] [dim]({label})[/dim]"
+            signal_str = f"[yellow]⚠️ CAUTION[/yellow] [dim]( {label} )[/dim]"
         elif regime == "SAFE":
             # Check if recently cleared from NO_QUOTE
             cleared_time = state.cleared_at.get(ticker, 0)
@@ -310,11 +310,11 @@ def build_events_table() -> Table:
     
     # Map trigger reasons to short display names with emoji
     trigger_labels = {
-        "spread_blowout": "sprd⬆️",
-        "time_to_event": "ttc⬇️",
+        "spread_blowout": "sprd ⬆️",
+        "time_to_event": "ttc ⬇️",
         "ttc_spread": "ttc+sprd",
         "vol_spread": "vol+sprd",
-        "high_volatility": "vol⬆️",
+        "high_volatility": "vol ⬆️",
         "time_liquidity": "late+liq",
     }
     
