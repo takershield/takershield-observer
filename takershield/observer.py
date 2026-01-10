@@ -528,7 +528,7 @@ def build_layout() -> Layout:
     
     # Header
     header = Panel(
-        Text(f"🛡️  TakerShield Observer v{__version__} [SHADOW MODE]", justify="center", style="bold white"),
+        Text(f"🛡️ TakerShield Observer v{__version__}", justify="center", style="bold white"),
         border_style="cyan"
     )
     layout["header"].update(header)
