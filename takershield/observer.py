@@ -243,6 +243,8 @@ def build_market_table() -> Table:
                 signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( ttc+sprd )[/dim]"
             elif reason == "vol_spread":
                 signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( p99+sprd )[/dim]"
+            elif reason == "no_book":
+                signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( no book )[/dim]"
             elif reason == "ml_risk":
                 signal_str = "[red]🛑 NO_QUOTE[/red] [dim]( ml )[/dim]"
             else:
@@ -316,6 +318,7 @@ def build_events_table() -> Table:
         "vol_spread": "vol+sprd",
         "high_volatility": "vol ⬆️",
         "time_liquidity": "late+liq",
+        "no_book": "no book",
     }
     
     # Show active events from server
