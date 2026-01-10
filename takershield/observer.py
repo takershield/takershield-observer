@@ -23,6 +23,8 @@ import select
 from datetime import datetime
 from typing import Optional, Dict, Any
 
+from . import __version__
+
 try:
     import websockets
     import ssl
@@ -333,7 +335,10 @@ def build_events_table() -> Table:
             continue
         visible_events.append((event_id, event))
     
-    for event_id, event in visible_events[-10:]:
+    # Sort by t0_ts descending (newest first), take last 10
+    visible_events.sort(key=lambda x: x[1].get("t0_ts", 0), reverse=True)
+    
+    for event_id, event in visible_events[:10]:
         full_ticker = event.get("ticker", "?")
         ticker = full_ticker[-26:]
         raw_triggers = event.get("trigger_reasons", [])
@@ -517,7 +522,7 @@ def build_layout() -> Layout:
     
     # Header
     header = Panel(
-        Text("🛡️  TakerShield Observer [SHADOW MODE]", justify="center", style="bold white"),
+        Text(f"🛡️  TakerShield Observer v{__version__} [SHADOW MODE]", justify="center", style="bold white"),
         border_style="cyan"
     )
     layout["header"].update(header)
