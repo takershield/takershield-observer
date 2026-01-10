@@ -321,8 +321,19 @@ def build_events_table() -> Table:
         "no_book": "no book",
     }
     
-    # Show active events from server
-    for event_id, event in list(state.active_events.items())[-10:]:
+    # Show active events from server (filter out old completed events)
+    visible_events = []
+    for event_id, event in list(state.active_events.items()):
+        tracking_complete = event.get("tracking_complete", False)
+        t0_ts = event.get("t0_ts", now_ms)
+        elapsed_sec = (now_ms - t0_ts) / 1000
+        
+        # Skip events that completed more than 60 seconds ago
+        if tracking_complete and elapsed_sec > 60:
+            continue
+        visible_events.append((event_id, event))
+    
+    for event_id, event in visible_events[-10:]:
         full_ticker = event.get("ticker", "?")
         ticker = full_ticker[-26:]
         raw_triggers = event.get("trigger_reasons", [])
@@ -394,7 +405,7 @@ def build_events_table() -> Table:
         
         table.add_row(ticker, trigger_str, action_str, age_str, duration_str, move_str)
     
-    if not state.active_events:
+    if not visible_events:
         # Fall back to legacy events
         for event in reversed(state.would_cancel_events[-5:]):
             raw_triggers = event.get("trigger_reasons", [])
