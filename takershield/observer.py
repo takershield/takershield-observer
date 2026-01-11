@@ -369,7 +369,8 @@ def build_events_table() -> Table:
         else:
             style = "green"
         
-        return f"[{style}]{arrow}{headline:.0f}[/{style}]({down:.0f}/{up:.0f})"
+        # Arrow is bold + colored, number is just colored
+        return f"[bold {style}]{arrow}[/bold {style}][{style}]{headline:.0f}[/{style}]({down:.0f}/{up:.0f})"
     
     # Show active events from server (filter out old completed events)
     visible_events = []
