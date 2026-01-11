@@ -107,6 +107,9 @@ class ObserverState:
         # Regime transition tracking
         self.last_regime: Dict[str, str] = {}  # ticker -> last regime
         self.cleared_at: Dict[str, float] = {}  # ticker -> timestamp when cleared from NO_QUOTE
+        
+        # Help screen mode
+        self.help_mode = False
     
     def set_status(self, msg: str, duration: float = 5):
         self.status_msg = msg
@@ -529,13 +532,71 @@ def build_latency_panel() -> Panel:
     return Panel(content, title="Latency", border_style="magenta")
 
 
+def build_help_screen() -> Panel:
+    """Build full-screen help overlay."""
+    content = Text()
+    
+    content.append("TakerShield – Risk Signals (30s overview)\n\n", style="bold cyan")
+    
+    content.append("SIGNALS\n", style="bold yellow")
+    content.append("  SAFE      ", style="bold green")
+    content.append("Market conditions normal. Quoting is reasonable.\n")
+    content.append("  CAUTION   ", style="bold yellow")
+    content.append("Risk rising. Consider widening quotes or reducing size.\n")
+    content.append("  NO_QUOTE  ", style="bold red")
+    content.append("High adverse-selection risk. Do not quote.\n\n")
+    
+    content.append("MOVE COLUMN\n", style="bold yellow")
+    content.append("  • Shows worst price move AFTER a NO_QUOTE signal.\n")
+    content.append("  • Windows: 30s / 2m / 5m from trigger time.\n")
+    content.append("  • ↓ means mid moved DOWN (YES side would lose).\n")
+    content.append("  • ↑ means mid moved UP (NO side would lose).\n")
+    content.append("  • Numbers are cents vs mid at trigger (t0_mid).\n")
+    content.append("  • Example: ↓4¢ means YES quotes would be picked off by 4¢.\n\n")
+    
+    content.append("WHAT THIS IS\n", style="bold yellow")
+    content.append("  • Shadow-mode risk observer.\n")
+    content.append("  • Shows what you avoided by standing down.\n")
+    content.append("  • Not trading advice.\n\n")
+    
+    content.append("Press [h] to close help.", style="dim")
+    
+    return Panel(content, title="Help", border_style="cyan")
+
+
 def build_layout() -> Layout:
     """Build the full layout."""
+    # Check if help mode is active
+    if state.help_mode:
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header", size=3),
+            Layout(name="help"),
+            Layout(name="footer", size=3)
+        )
+        
+        # Header
+        header = Panel(
+            Text(f"🛡️ TakerShield Observer v{__version__}", justify="center", style="bold white"),
+            border_style="cyan"
+        )
+        layout["header"].update(header)
+        
+        # Help screen
+        layout["help"].update(build_help_screen())
+        
+        # Footer
+        layout["footer"].update(Panel(Text("Press [h] to close help", justify="center", style="dim")))
+        
+        return layout
+    
+    # Normal layout
     layout = Layout()
     
     layout.split_column(
         Layout(name="header", size=3),
         Layout(name="main"),
+        Layout(name="legend", size=1),
         Layout(name="footer", size=3)
     )
     
@@ -567,8 +628,12 @@ def build_layout() -> Layout:
     layout["stats"].update(build_stats_panel())
     layout["latency"].update(build_latency_panel())
     
-    # Footer
-    footer_text = "[a]dd  [r]emove  [d]emo  [c]lear  [q]uit"
+    # Legend footer (one-line, dim)
+    legend_text = Text("Move: worst @30s/2m/5m. ↑ NO hurt, ↓ YES hurt. (Y/N)=¢ vs t0_mid", style="dim", justify="center")
+    layout["legend"].update(legend_text)
+    
+    # Footer with key bindings
+    footer_text = "[a]dd  [r]emove  [d]emo  [c]lear  [h]elp  [q]uit"
     status = state.get_status()
     if status:
         footer_text = f"{status}  |  {footer_text}"
@@ -730,6 +795,10 @@ async def handle_keyboard():
                 if char == 'q':
                     console.print("\n👋 Goodbye!", style="bold")
                     sys.exit(0)
+                
+                elif char == 'h':
+                    # Toggle help screen
+                    state.help_mode = not state.help_mode
                 
                 elif char == 'd':
                     # Demo mode - load latest BTC 15m
