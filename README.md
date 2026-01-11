@@ -16,6 +16,14 @@ This is a monitoring tool, not trading software. It shows you when conditions ar
 
 ---
 
+## Requirements
+
+- Python 3.8+
+- macOS or Linux (Windows not currently supported)
+- Terminal with Unicode support
+
+---
+
 ## Quickstart (60 seconds)
 
 ```bash
