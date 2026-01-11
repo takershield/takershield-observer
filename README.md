@@ -73,7 +73,7 @@ Upgrade: `pip install --upgrade git+https://github.com/takershield/takershield-o
 Each NO_QUOTE event logs:
 - **Trigger**: What caused the signal (spread, time, volatility)
 - **Age / Shielded**: How long ago, how long you were protected
-- **Move (30s/2m/5m)**: Worst post-signal mid move per window. Format: `▼4(4/3)` = 4¢ max, ▼ hurts YES quoters, ▲ hurts NO quoters. Not realized P&L.
+- **Move (30s/2m/5m)**: Worst post-signal mid move per window (see Move Column section)
 
 Risk Events shows the most recent 20 cancel events (rolling window). Older events age out automatically.
 
@@ -83,11 +83,30 @@ Risk Events shows the most recent 20 cancel events (rolling window). Older event
 
 | Signal | Meaning |
 |--------|---------|
-| ✅ **SAFE** | Conditions normal. No elevated risk detected. |
-| ⚠️ **CAUTION** | Early warning. Liquidity thinning, volatility rising, or approaching close. |
-| 🛑 **NO_QUOTE** | Conditions unsafe. Spread blowout, one-sided book, or <2 min to close. Stand down. |
+| ✅ **SAFE** | Market conditions normal. Quoting is reasonable. |
+| ⚠️ **CAUTION** | Risk rising. Consider widening quotes or reducing size. |
+| 🛑 **NO_QUOTE** | High adverse-selection risk. Do not quote. |
 
 Triggers are OR-logic: any single condition fires the signal.
+
+---
+
+## Move Column
+
+- Shows worst price move AFTER a NO_QUOTE signal.
+- Windows: 30s / 2m / 5m from trigger time.
+- ▼ means mid moved DOWN (YES side would lose).
+- ▲ means mid moved UP (NO side would lose).
+- Numbers are cents vs mid at trigger (t0_mid).
+- Example: `▼4(4/3)` means 4¢ worst move, YES quotes would be picked off by 4¢, NO by 3¢.
+
+---
+
+## What This Is
+
+- Shadow-mode risk observer.
+- Shows what you avoided by standing down.
+- Not trading advice.
 
 ---
 
