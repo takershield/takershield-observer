@@ -348,18 +348,18 @@ def build_events_table() -> Table:
         - down = adverse to YES quoter (price dropped)
         - up = adverse to NO quoter (price rose)
         - headline = max(down, up)
-        - arrow: ↓ if down wins, ↑ if up wins, ↕ if tie
+        - arrow: ▼ if down wins, ▲ if up wins, ◆ if tie
         """
         headline = max(down, up)
         if headline == 0:
             return "[dim]—[/dim]"
         
         if down > up:
-            arrow = "↓"
+            arrow = "▼"
         elif up > down:
-            arrow = "↑"
+            arrow = "▲"
         else:
-            arrow = "↕"
+            arrow = "◆"
         
         # Color code by severity
         if headline >= 10:
@@ -369,8 +369,7 @@ def build_events_table() -> Table:
         else:
             style = "green"
         
-        # Arrow is bold + colored, number is just colored
-        return f"[bold {style}]{arrow}[/bold {style}][{style}]{headline:.0f}[/{style}]({down:.0f}/{up:.0f})"
+        return f"[{style}]{arrow}{headline:.0f}[/{style}]({down:.0f}/{up:.0f})"
     
     # Show active events from server (filter out old completed events)
     visible_events = []
@@ -550,10 +549,10 @@ def build_help_screen() -> Panel:
     content.append("MOVE COLUMN\n", style="bold yellow")
     content.append("  • Shows worst price move AFTER a NO_QUOTE signal.\n")
     content.append("  • Windows: 30s / 2m / 5m from trigger time.\n")
-    content.append("  • ↓ means mid moved DOWN (YES side would lose).\n")
-    content.append("  • ↑ means mid moved UP (NO side would lose).\n")
+    content.append("  • ▼ means mid moved DOWN (YES side would lose).\n")
+    content.append("  • ▲ means mid moved UP (NO side would lose).\n")
     content.append("  • Numbers are cents vs mid at trigger (t0_mid).\n")
-    content.append("  • Example: ↓4¢ means YES quotes would be picked off by 4¢.\n\n")
+    content.append("  • Example: ▼4¢ means YES quotes would be picked off by 4¢.\n\n")
     
     content.append("WHAT THIS IS\n", style="bold yellow")
     content.append("  • Shadow-mode risk observer.\n")
@@ -630,7 +629,7 @@ def build_layout() -> Layout:
     layout["latency"].update(build_latency_panel())
     
     # Legend footer (one-line, dim)
-    legend_text = Text("Move: worst @30s/2m/5m. ↑ NO hurt, ↓ YES hurt. (Y/N)=¢ vs t0_mid", style="dim", justify="center")
+    legend_text = Text("Move: worst @30s/2m/5m. ▲ NO hurt, ▼ YES hurt. (Y/N)=¢ vs t0_mid", style="dim", justify="center")
     layout["legend"].update(legend_text)
     
     # Footer with key bindings

@@ -73,7 +73,7 @@ Upgrade: `pip install --upgrade git+https://github.com/takershield/takershield-o
 Each NO_QUOTE event logs:
 - **Trigger**: What caused the signal (spread, time, volatility)
 - **Age / Shielded**: How long ago, how long you were protected
-- **Move (30s/2m/5m)**: Worst post-signal mid move per window. Format: `↓4(4/3)` = 4¢ max, ↓ hurts YES quoters, ↑ hurts NO quoters. Not realized P&L.
+- **Move (30s/2m/5m)**: Worst post-signal mid move per window. Format: `▼4(4/3)` = 4¢ max, ▼ hurts YES quoters, ▲ hurts NO quoters. Not realized P&L.
 
 Risk Events shows the most recent 20 cancel events (rolling window). Older events age out automatically.
 
